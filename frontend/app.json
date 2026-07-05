@@ -10,7 +10,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.restodeliveryapp.b3c544"
+      "bundleIdentifier": "com.emergent.restodeliveryapp.b3c544",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Share your live location with customers during delivery."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +21,8 @@
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.emergent.restodeliveryapp.b3c544"
+      "package": "com.emergent.restodeliveryapp.b3c544",
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
     },
     "web": {
       "bundler": "metro",
@@ -27,6 +31,12 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Share your live location with customers during delivery."
+        }
+      ],
       [
         "expo-splash-screen",
         {

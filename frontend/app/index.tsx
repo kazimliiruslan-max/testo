@@ -10,9 +10,8 @@ export default function Index() {
 
   useEffect(() => {
     if (loading) return;
-    if (!user) {
-      router.replace('/(auth)/login');
-    } else if (user.role === 'customer') {
+    // Guests + customers land on customer home
+    if (!user || user.role === 'customer') {
       router.replace('/(customer)/home');
     } else if (user.role === 'restaurant_owner') {
       router.replace('/(owner)/orders');

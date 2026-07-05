@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 2 — DirectDine new features tested end-to-end. Backend: 36/36 pytest PASSED (24 legacy + 12 new). New endpoints verified: GET /api/restaurants exposes is_featured + featured_tagline (Bella Napoli + Sakura Sushi featured=true, Smash false); POST /api/orders/guest creates user+order in one call with correct total, status=pending, payment_method=cash_on_delivery, returns access_token; duplicate email returns 400; POST /api/auth/switch-to-owner promotes customer → restaurant_owner, creates restaurant, returns new token; rejects existing owner/courier with 400; POST /api/couriers/invite → returns invite_link/token/email/restaurant_name (403 for non-owner/courier); GET /api/couriers/invite/{token} returns invite info (404 invalid); POST /api/couriers/accept-invite creates courier user, marks invite accepted, second call returns 404; legacy auth/restaurant/menu/order/courier endpoints still green; all 4 seeded creds still log in. Frontend (mobile 390x844): fresh visit lands guest directly on /home (no forced login); Featured carousel with SPONSORED badge + 2 featured cards (Bella + Sakura) renders and scrolls; cuisine chips are horizontally scrollable and filtering works (Pizza filter → 1 card); restaurant → menu → add → cart floating bar → /cart works; on /cart as GUEST the checkout form (name/email/phone/password + address) is shown and button label is exactly 'Create Account & Place Order' — placing order calls /api/orders/guest and navigates to /tracking/{id} with map placeholder + status timeline; on /cart when LOGGED IN as customer1, guest fields are hidden and button label is 'Place Order'; /profile as guest shows 'Sign in or create an account' banner + Become a Restaurant card; tapping Become-a-Restaurant as guest navigates to /register?role=restaurant_owner with owner tab preselected; tapping it as authed customer opens Restaurant Setup modal → activate calls switch-to-owner → routes to owner /orders; owner /profile shows Restaurant Dashboard + Switch to Customer rows; owner /couriers → Invite Courier button opens invite form → submit shows modal with shareable invite link + Copy button (testIDs invite-link-value, copy-invite-link, invite-close); visiting /invite/{token} shows acceptance screen with courier's name/email/restaurant + Set Password field → submit activates account and routes to /(courier)/deliveries with Update-My-Location button visible. TR translation persists across reload. Two items could not be positively verified — see issues below.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "(owner)/orders route collision", "issue": "Fresh page login as owner1@directdine.com redirected to URL /orders but the CUSTOMER orders history screen was rendered (bottom nav = Home/Orders/Profile, cards show 'Track Order' links, no 'SUBSCRIPTION ACTIVE' badge, no pending-badge). Both /app/frontend/app/(customer)/orders.tsx and /app/frontend/app/(owner)/orders.tsx share URL '/orders' — Expo Router seems to mount the customer variant on hard-navigation. In-app navigation via router.replace('/(owner)/orders') from switch-to-owner activation DOES correctly land on the owner screen, so the bug only appears on direct URL / fresh login. Rename or use segment-aware routing.", "testID": "-", "priority": "HIGH"},
+      {"component": "Owner /orders — notification banner + pending badge (polling)", "issue": "Could not verify 'New order!' animated banner or pending-count badge after posting a guest order to Bella Napoli — the owner screen at /orders rendered the customer history view instead (see route collision above). Retest after routing fix.", "testID": "pending-badge", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "profile.tsx (TR)", "issues": ["Not every string is fully translated to Turkish. 'Çıkış' (Logout) present after language toggle+reload but 'Restoran' word not found — likely some new strings (become-restaurant, restaurant setup modal, invite copy) still fall back to EN. Non-blocking but polish needed."]},
+      {"screen": "(customer)/tracking", "issues": ["Web preview shows placeholder 'Live Map' box because react-native-maps is stubbed on web. Expected per mocked_apis."]}
+    ],
+    "react_native_issues": [
+      {"component": "Global styles", "issue": "Console warning still present: 'shadow*' style props are deprecated. Use 'boxShadow'. Non-blocking."},
+      {"component": "Global styles", "issue": "Console warning still present: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Non-blocking."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_directdine_api.py",
+    "/app/backend/tests/test_directdine_new_features.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "HIGH: Resolve the /orders route collision between (customer)/orders.tsx and (owner)/orders.tsx. Options: (a) rename one to a distinct path (e.g. /(owner)/dashboard or /(customer)/my-orders), or (b) add a top-level index gate that redirects to the correct segment based on user.role. Currently a hard reload after owner login lands on the customer orders view.",
+    "HIGH: Re-verify the polling notification banner + pending-count badge on owner /orders once the routing is fixed. Backend guest-order call was 200; polling window is ~7s; wait ~9s in test.",
+    "MEDIUM: Complete Turkish translations for iteration-2 strings (Become a Restaurant, Restaurant Setup modal, invite modal Copy/Done, subscription badge, notification banner text).",
+    "LOW: Migrate deprecated RN web style props: replace 'shadow*' with 'boxShadow' and prop 'pointerEvents' with style.pointerEvents."
+  ],
+  "critical_code_review_comments": [
+    "server.py cleanly excludes MongoDB _id via projections everywhere — good.",
+    "New endpoints correctly reuse hash_password / create_token / require_roles — consistent auth surface.",
+    "Guest checkout enforces email-uniqueness the same way as /auth/register — good.",
+    "switch-to-owner uses UpgradeToOwnerInput and rejects owner/courier with 400 — good.",
+    "Courier invite tokens generated via secrets.token_urlsafe(24); invites are single-use (accept sets accepted=true; second attempt 404) — good.",
+    "server.py is now ~818 lines — exceeds the 700-line guideline. Split into routers/models modules (auth.py, restaurants.py, orders.py, couriers.py, invites.py) in the next refactor.",
+    "Frontend has a route naming collision: both (customer)/orders.tsx and (owner)/orders.tsx render at URL /orders. Consider a role-aware route index or renaming."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_directdine_new_features.py (new)",
+    "/app/test_reports/iteration_2.json (new)",
+    "/app/test_reports/pytest/pytest_results.xml (regenerated, 36 tests)"
+  ],
+  "success_rate": {"backend": "100% (36/36)", "frontend": "~90% — 13/15 spec items fully verified; 2 (owner order-received banner + pending badge) blocked by the /orders route collision"},
+  "seed_data_creation": "Backend auto-seeds on startup. Tests created ephemeral TEST_-prefixed users/orders/invites; no cleanup performed beyond harmless artifacts.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All new backend endpoints green. Focus retesting on the /orders route collision fix: after login as owner1@directdine.com go to /orders directly (fresh page load) and confirm the OWNER dashboard renders (SUBSCRIPTION ACTIVE badge + pending-badge testID + owner-orders-list). Then post a guest order via POST /api/orders/guest to Bella Napoli and wait ~9s — assert an in-app banner 'New order!' animates and pending badge count increments. Reuse /app/backend/tests/test_directdine_new_features.py.",
+  "rca_of_issue": "Owner order-received notifications (polling + banner + pending badge) could not be validated because URL /orders resolves to (customer)/orders.tsx on fresh page load — even though router.replace('/(owner)/orders') is used in login.tsx (line 29), Expo Router's URL-based routing collides and prefers the customer segment on hard navigation. Reproduce: 1) open /login incognito, 2) log in as owner1@directdine.com / password123, 3) app lands on URL /orders but renders (customer)/orders (Track Order buttons, Home/Orders/Profile bottom nav). Mitigation: give the two screens distinct URLs (e.g. rename (owner)/orders → (owner)/dashboard) OR add an index redirect that inspects user.role."
+}

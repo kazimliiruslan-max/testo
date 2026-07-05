@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, StyleSheet, Pressable, KeyboardAvoidingView,
   Platform, ScrollView, ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth, Role } from '@/src/context/AuthContext';
@@ -14,7 +14,9 @@ export default function RegisterScreen() {
   const router = useRouter();
   const { register } = useAuth();
   const { t } = useI18n();
-  const [role, setRole] = useState<Role>('customer');
+  const params = useLocalSearchParams<{ role?: string }>();
+  const initialRole: Role = params.role === 'restaurant_owner' ? 'restaurant_owner' : 'customer';
+  const [role, setRole] = useState<Role>(initialRole);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

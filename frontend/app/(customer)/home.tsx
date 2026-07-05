@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ScrollView, TextInput,
-  RefreshControl, ActivityIndicator,
+  RefreshControl, ActivityIndicator, Dimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,19 +9,23 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { api } from '@/src/api/client';
+import { useAuth } from '@/src/context/AuthContext';
 import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
 
 interface Restaurant {
   id: string; name: string; description: string; cuisine: string;
   image_url: string; rating: number; delivery_minutes: number; address: string;
+  is_featured: boolean; featured_tagline: string;
 }
 
-const CUISINES = ['All', 'Pizza', 'Burgers', 'Other'];
+const { width: SCREEN_W } = Dimensions.get('window');
+const CUISINES = ['All', 'Pizza', 'Burgers', 'Sushi', 'Other'];
 
 export default function CustomerHome() {
   const router = useRouter();
   const { t } = useI18n();
+  const { user } = useAuth();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -32,10 +36,7 @@ export default function CustomerHome() {
     try {
       const res = await api.get('/restaurants');
       setRestaurants(res.data);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+    } finally { setLoading(false); setRefreshing(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -45,13 +46,17 @@ export default function CustomerHome() {
     const searchOk = !search || r.name.toLowerCase().includes(search.toLowerCase());
     return cuisineOk && searchOk;
   });
+  const featured = restaurants.filter((r) => r.is_featured);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>DirectDine</Text>
+        <View>
+          <Text style={styles.headerHello}>{user ? `Hi, ${user.name.split(' ')[0]} 👋` : 'Hi there 👋'}</Text>
+          <Text style={styles.headerTitle}>DirectDine</Text>
+        </View>
         <View style={styles.badge}>
-          <Ionicons name="checkmark-circle" size={14} color={theme.colors.success} />
+          <Ionicons name="leaf" size={14} color={theme.colors.brandDark} />
           <Text style={styles.badgeTxt}>{t('noCommission')}</Text>
         </View>
       </View>
@@ -68,67 +73,122 @@ export default function CustomerHome() {
         />
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chipsRow}
-        style={styles.chipsStrip}
-      >
-        {CUISINES.map((c) => (
-          <Pressable
-            key={c}
-            testID={`cuisine-chip-${c}`}
-            onPress={() => setCuisine(c)}
-            style={[styles.chip, cuisine === c && styles.chipActive]}
-          >
-            <Text style={[styles.chipTxt, cuisine === c && styles.chipTxtActive]}>
-              {c === 'All' ? t('allCuisines') : c}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 40 }} size="large" color={theme.colors.brand} />
+        <ActivityIndicator style={{ marginTop: 60 }} size="large" color={theme.colors.brand} />
       ) : (
         <FlatList
           testID="restaurants-list"
           data={filtered}
           keyExtractor={(r) => r.id}
-          contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
+          contentContainerStyle={{ paddingBottom: theme.spacing.xxl }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
-          ItemSeparatorComponent={() => <View style={{ height: theme.spacing.lg }} />}
+          ListHeaderComponent={
+            <View>
+              {featured.length > 0 && (
+                <>
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>{t('featuredThisWeek')}</Text>
+                    <View style={styles.sponsoredTag}>
+                      <Ionicons name="star" size={11} color={theme.colors.brandDark} />
+                      <Text style={styles.sponsoredTxt}>{t('sponsored')}</Text>
+                    </View>
+                  </View>
+                  <FlatList
+                    testID="featured-carousel"
+                    data={featured}
+                    keyExtractor={(r) => r.id}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    snapToInterval={SCREEN_W - 32}
+                    decelerationRate="fast"
+                    contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, gap: theme.spacing.md }}
+                    renderItem={({ item }) => (
+                      <Pressable
+                        testID={`featured-card-${item.id}`}
+                        onPress={() => router.push(`/(customer)/restaurant/${item.id}`)}
+                        style={[styles.featuredCard, { width: SCREEN_W - 64 }]}
+                      >
+                        <Image source={{ uri: item.image_url }} style={styles.featuredImg} contentFit="cover" />
+                        <LinearGradient
+                          colors={['transparent', 'rgba(0,0,0,0.85)']}
+                          style={styles.featuredGradient}
+                        />
+                        <View style={styles.featuredBadge}>
+                          <Ionicons name="sparkles" size={12} color="#fff" />
+                          <Text style={styles.featuredBadgeTxt}>{t('featured')}</Text>
+                        </View>
+                        <View style={styles.featuredContent}>
+                          <Text style={styles.featuredTitle}>{item.name}</Text>
+                          <Text style={styles.featuredTagline}>{item.featured_tagline || item.description}</Text>
+                          <View style={styles.featuredMeta}>
+                            <View style={styles.featuredChip}>
+                              <Ionicons name="star" size={12} color={theme.colors.accent} />
+                              <Text style={styles.featuredChipTxt}>{item.rating.toFixed(1)}</Text>
+                            </View>
+                            <View style={styles.featuredChip}>
+                              <Ionicons name="time-outline" size={12} color="#fff" />
+                              <Text style={styles.featuredChipTxt}>{item.delivery_minutes} {t('minDelivery')}</Text>
+                            </View>
+                          </View>
+                        </View>
+                      </Pressable>
+                    )}
+                  />
+                </>
+              )}
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.chipsRow}
+                style={styles.chipsStrip}
+              >
+                {CUISINES.map((c) => (
+                  <Pressable
+                    key={c}
+                    testID={`cuisine-chip-${c}`}
+                    onPress={() => setCuisine(c)}
+                    style={[styles.chip, cuisine === c && styles.chipActive]}
+                  >
+                    <Text style={[styles.chipTxt, cuisine === c && styles.chipTxtActive]}>
+                      {c === 'All' ? t('allCuisines') : c}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+              <Text style={styles.listTitle}>All restaurants</Text>
+            </View>
+          }
           renderItem={({ item }) => (
             <Pressable
               testID={`restaurant-card-${item.id}`}
               onPress={() => router.push(`/(customer)/restaurant/${item.id}`)}
               style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]}
             >
-              <View style={styles.cardImgWrap}>
-                <Image source={{ uri: item.image_url }} style={styles.cardImg} contentFit="cover" />
-                <LinearGradient
-                  colors={['transparent', 'rgba(0,0,0,0.55)']}
-                  style={styles.gradient}
-                />
-                <View style={styles.cardBadge}>
-                  <Text style={styles.cardBadgeTxt}>{t('noCommission')}</Text>
-                </View>
-              </View>
+              <Image source={{ uri: item.image_url }} style={styles.cardImg} contentFit="cover" />
               <View style={styles.cardBody}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cardTitle}>{item.name}</Text>
-                  <Text style={styles.cardCuisine}>{item.cuisine} · {item.description}</Text>
-                </View>
-                <View style={styles.cardMeta}>
-                  <View style={styles.rating}>
-                    <Ionicons name="star" size={12} color={theme.colors.warning} />
-                    <Text style={styles.ratingTxt}>{item.rating.toFixed(1)}</Text>
+                  <Text style={styles.cardCuisine} numberOfLines={1}>{item.cuisine} · {item.description}</Text>
+                  <View style={styles.cardMeta}>
+                    <View style={styles.rating}>
+                      <Ionicons name="star" size={12} color={theme.colors.accent} />
+                      <Text style={styles.ratingTxt}>{item.rating.toFixed(1)}</Text>
+                    </View>
+                    <View style={styles.dot} />
+                    <Text style={styles.eta}>{item.delivery_minutes} {t('minDelivery')}</Text>
+                    {item.is_featured && (
+                      <>
+                        <View style={styles.dot} />
+                        <Text style={styles.featuredTag}>{t('featured')}</Text>
+                      </>
+                    )}
                   </View>
-                  <Text style={styles.eta}>{item.delivery_minutes} {t('minDelivery')}</Text>
                 </View>
               </View>
             </Pressable>
           )}
+          ItemSeparatorComponent={() => <View style={{ height: theme.spacing.md }} />}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Ionicons name="restaurant-outline" size={48} color={theme.colors.onSurfaceTertiary} />
@@ -147,19 +207,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.md,
   },
-  headerTitle: { fontSize: theme.font.xxl, fontWeight: '800', color: theme.colors.onSurface },
+  headerHello: { color: theme.colors.onSurfaceSecondary, fontSize: theme.font.base },
+  headerTitle: { fontSize: theme.font.xxl, fontWeight: '800', color: theme.colors.brandDark },
   badge: {
-    flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs,
-    backgroundColor: '#E8F7EC', paddingHorizontal: theme.spacing.md, paddingVertical: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: theme.colors.brandTertiary, paddingHorizontal: theme.spacing.md, paddingVertical: 6,
     borderRadius: theme.radius.pill,
   },
-  badgeTxt: { color: theme.colors.success, fontWeight: '700', fontSize: theme.font.sm },
+  badgeTxt: { color: theme.colors.brandDark, fontWeight: '700', fontSize: theme.font.sm },
   searchWrap: {
     flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm,
     marginHorizontal: theme.spacing.lg, backgroundColor: theme.colors.surfaceSecondary,
-    borderRadius: theme.radius.md, paddingHorizontal: theme.spacing.lg, height: 44,
+    borderRadius: theme.radius.md, paddingHorizontal: theme.spacing.lg, height: 44, marginBottom: theme.spacing.sm,
   },
   searchInput: { flex: 1, fontSize: theme.font.base, color: theme.colors.onSurface },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: theme.spacing.lg, marginTop: theme.spacing.md, marginBottom: theme.spacing.sm },
+  sectionTitle: { fontSize: theme.font.lg, fontWeight: '800', color: theme.colors.onSurface },
+  sponsoredTag: { flexDirection: 'row', gap: 4, alignItems: 'center', backgroundColor: theme.colors.brandTertiary, paddingHorizontal: theme.spacing.sm, paddingVertical: 3, borderRadius: theme.radius.pill },
+  sponsoredTxt: { color: theme.colors.brandDark, fontWeight: '700', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+  featuredCard: { height: 200, borderRadius: theme.radius.lg, overflow: 'hidden', backgroundColor: theme.colors.surfaceSecondary },
+  featuredImg: { width: '100%', height: '100%' },
+  featuredGradient: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 140 },
+  featuredBadge: { position: 'absolute', top: theme.spacing.md, left: theme.spacing.md, flexDirection: 'row', gap: 4, alignItems: 'center', backgroundColor: theme.colors.brand, paddingHorizontal: theme.spacing.md, paddingVertical: 4, borderRadius: theme.radius.pill },
+  featuredBadgeTxt: { color: '#fff', fontWeight: '800', fontSize: theme.font.sm },
+  featuredContent: { position: 'absolute', left: theme.spacing.lg, right: theme.spacing.lg, bottom: theme.spacing.lg, gap: 4 },
+  featuredTitle: { color: '#fff', fontWeight: '800', fontSize: theme.font.xl },
+  featuredTagline: { color: '#fff', fontSize: theme.font.sm, opacity: 0.9 },
+  featuredMeta: { flexDirection: 'row', gap: theme.spacing.sm, marginTop: 6 },
+  featuredChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: theme.spacing.sm, paddingVertical: 3, borderRadius: theme.radius.pill },
+  featuredChipTxt: { color: '#fff', fontSize: theme.font.sm, fontWeight: '600' },
   chipsStrip: { maxHeight: 56, marginTop: theme.spacing.md },
   chipsRow: { paddingHorizontal: theme.spacing.lg, gap: theme.spacing.sm, alignItems: 'center' },
   chip: {
@@ -167,29 +243,25 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.pill, borderWidth: 1, borderColor: theme.colors.border,
     justifyContent: 'center', backgroundColor: theme.colors.surface,
   },
-  chipActive: { backgroundColor: theme.colors.inverse, borderColor: theme.colors.inverse },
+  chipActive: { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
   chipTxt: { color: theme.colors.onSurface, fontWeight: '600', fontSize: theme.font.base },
-  chipTxtActive: { color: theme.colors.onInverse },
+  chipTxtActive: { color: '#fff' },
+  listTitle: { fontSize: theme.font.lg, fontWeight: '800', color: theme.colors.onSurface, paddingHorizontal: theme.spacing.lg, marginTop: theme.spacing.md, marginBottom: theme.spacing.sm },
   card: {
-    backgroundColor: theme.colors.surface, borderRadius: theme.radius.lg,
-    overflow: 'hidden', borderWidth: 1, borderColor: theme.colors.divider,
+    flexDirection: 'row', backgroundColor: theme.colors.surface, borderRadius: theme.radius.lg,
+    overflow: 'hidden', marginHorizontal: theme.spacing.lg,
+    borderWidth: 1, borderColor: theme.colors.divider,
   },
-  cardImgWrap: { height: 160, position: 'relative' },
-  cardImg: { width: '100%', height: '100%' },
-  gradient: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 80 },
-  cardBadge: {
-    position: 'absolute', top: theme.spacing.md, right: theme.spacing.md,
-    backgroundColor: theme.colors.brand, paddingHorizontal: theme.spacing.md,
-    paddingVertical: 4, borderRadius: theme.radius.pill,
-  },
-  cardBadgeTxt: { color: theme.colors.onBrand, fontSize: theme.font.sm, fontWeight: '700' },
-  cardBody: { padding: theme.spacing.md, flexDirection: 'row', alignItems: 'flex-start' },
+  cardImg: { width: 100, height: 100 },
+  cardBody: { flex: 1, padding: theme.spacing.md, flexDirection: 'row', alignItems: 'center' },
   cardTitle: { fontSize: theme.font.lg, fontWeight: '700', color: theme.colors.onSurface },
   cardCuisine: { fontSize: theme.font.sm, color: theme.colors.onSurfaceSecondary, marginTop: 2 },
-  cardMeta: { alignItems: 'flex-end', gap: 4 },
+  cardMeta: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginTop: 6 },
   rating: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   ratingTxt: { fontSize: theme.font.sm, fontWeight: '700', color: theme.colors.onSurface },
+  dot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: theme.colors.onSurfaceTertiary },
   eta: { fontSize: theme.font.sm, color: theme.colors.onSurfaceTertiary },
+  featuredTag: { fontSize: theme.font.sm, color: theme.colors.brandDark, fontWeight: '700' },
   empty: { alignItems: 'center', marginTop: 60, gap: theme.spacing.md },
   emptyTxt: { color: theme.colors.onSurfaceTertiary, fontSize: theme.font.base },
 });

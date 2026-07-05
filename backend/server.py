@@ -6,6 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import uuid
+import secrets
 import jwt
 import bcrypt
 from pathlib import Path
@@ -74,6 +75,8 @@ class Restaurant(BaseModel):
     lng: float = 28.9784
     delivery_minutes: int = 30
     subscription_active: bool = True
+    is_featured: bool = False
+    featured_tagline: str = ""
     created_at: str
 
 class RestaurantCreate(BaseModel):
@@ -129,6 +132,39 @@ class CourierCreate(BaseModel):
     password: str
     name: str
     phone: Optional[str] = None
+
+class CourierInvite(BaseModel):
+    email: EmailStr
+    name: str
+    phone: Optional[str] = None
+
+class CourierInviteInfo(BaseModel):
+    email: EmailStr
+    name: str
+    restaurant_name: str
+    token: str
+
+class CourierAcceptInvite(BaseModel):
+    token: str
+    password: str
+
+class CourierInviteResponse(BaseModel):
+    invite_link: str
+    email: EmailStr
+    token: str
+    restaurant_name: str
+
+class GuestOrderCreate(BaseModel):
+    name: str
+    email: EmailStr
+    phone: str
+    password: str
+    restaurant_id: str
+    items: List['OrderItem']
+    delivery_address: str
+    delivery_lat: float
+    delivery_lng: float
+    notes: Optional[str] = ""
 
 class CourierLocation(BaseModel):
     lat: float
@@ -393,7 +429,133 @@ async def get_courier_location(cid: str):
     return {'id': cid, 'name': doc['name'], 'lat': doc.get('lat'), 'lng': doc.get('lng')}
 
 
+# ---------- Courier Invite Flow ----------
+def _build_invite_link(token: str) -> str:
+    base = os.environ.get('PUBLIC_APP_URL', 'https://directdine.app')
+    return f"{base}/invite/{token}"
+
+@api_router.post("/couriers/invite", response_model=CourierInviteResponse)
+async def invite_courier(data: CourierInvite, user: dict = Depends(require_roles('restaurant_owner'))):
+    existing = await db.users.find_one({'email': data.email.lower()})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    token = secrets.token_urlsafe(24)
+    invite_doc = {
+        'token': token,
+        'email': data.email.lower(),
+        'name': data.name,
+        'phone': data.phone,
+        'restaurant_id': user['restaurant_id'],
+        'invited_by': user['id'],
+        'accepted': False,
+        'created_at': now_iso(),
+    }
+    await db.courier_invites.insert_one(invite_doc)
+    rest = await db.restaurants.find_one({'id': user['restaurant_id']}, {'_id': 0})
+    logger.info(f"[EMAIL MOCK] Invite for {data.email}: {_build_invite_link(token)}")
+    return CourierInviteResponse(
+        invite_link=_build_invite_link(token),
+        email=data.email,
+        token=token,
+        restaurant_name=rest['name'] if rest else '',
+    )
+
+@api_router.get("/couriers/invite/{token}", response_model=CourierInviteInfo)
+async def get_invite(token: str):
+    inv = await db.courier_invites.find_one({'token': token, 'accepted': False}, {'_id': 0})
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invite not found or already used")
+    rest = await db.restaurants.find_one({'id': inv['restaurant_id']}, {'_id': 0})
+    return CourierInviteInfo(
+        email=inv['email'], name=inv['name'],
+        restaurant_name=rest['name'] if rest else '', token=token,
+    )
+
+@api_router.post("/couriers/accept-invite", response_model=AuthResponse)
+async def accept_invite(data: CourierAcceptInvite):
+    inv = await db.courier_invites.find_one({'token': data.token, 'accepted': False}, {'_id': 0})
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invite not found or already used")
+    existing = await db.users.find_one({'email': inv['email']})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    user_id = str(uuid.uuid4())
+    user_doc = {
+        'id': user_id, 'email': inv['email'],
+        'password_hash': hash_password(data.password),
+        'name': inv['name'], 'role': 'courier', 'phone': inv.get('phone'),
+        'restaurant_id': inv['restaurant_id'], 'lat': None, 'lng': None,
+        'available': True, 'created_at': now_iso(),
+    }
+    await db.users.insert_one(user_doc)
+    await db.courier_invites.update_one({'token': data.token}, {'$set': {'accepted': True, 'accepted_at': now_iso()}})
+    token = create_token(user_id, 'courier')
+    return AuthResponse(access_token=token, user=user_to_public(user_doc))
+
+
+# ---------- Mode switch: customer -> restaurant_owner ----------
+class UpgradeToOwnerInput(BaseModel):
+    restaurant_name: str
+
+@api_router.post("/auth/switch-to-owner", response_model=AuthResponse)
+async def switch_to_owner(data: UpgradeToOwnerInput, user: dict = Depends(get_current_user)):
+    if user['role'] == 'restaurant_owner':
+        raise HTTPException(status_code=400, detail="Already a restaurant owner")
+    if user['role'] == 'courier':
+        raise HTTPException(status_code=400, detail="Couriers cannot switch modes")
+    restaurant_id = str(uuid.uuid4())
+    rest_doc = {
+        'id': restaurant_id, 'owner_id': user['id'],
+        'name': data.restaurant_name, 'description': '', 'cuisine': 'Other',
+        'image_url': 'https://images.pexels.com/photos/1279330/pexels-photo-1279330.jpeg',
+        'rating': 5.0, 'address': '', 'lat': 41.0082, 'lng': 28.9784,
+        'delivery_minutes': 30, 'subscription_active': True, 'is_featured': False,
+        'featured_tagline': '', 'created_at': now_iso(),
+    }
+    await db.restaurants.insert_one(rest_doc)
+    await db.users.update_one({'id': user['id']}, {'$set': {
+        'role': 'restaurant_owner', 'restaurant_id': restaurant_id,
+    }})
+    updated = await db.users.find_one({'id': user['id']}, {'_id': 0})
+    token = create_token(user['id'], 'restaurant_owner')
+    return AuthResponse(access_token=token, user=user_to_public(updated))
+
+
 # ---------- Order Routes ----------
+@api_router.post("/orders/guest", response_model=AuthResponse)
+async def create_order_as_guest(data: GuestOrderCreate):
+    """Guest checkout: creates a customer account + places an order in one call. Returns auth token."""
+    existing = await db.users.find_one({'email': data.email.lower()})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered — please log in instead")
+    rest = await db.restaurants.find_one({'id': data.restaurant_id}, {'_id': 0})
+    if not rest:
+        raise HTTPException(status_code=404, detail="Restaurant not found")
+    user_id = str(uuid.uuid4())
+    user_doc = {
+        'id': user_id, 'email': data.email.lower(),
+        'password_hash': hash_password(data.password),
+        'name': data.name, 'role': 'customer', 'phone': data.phone,
+        'restaurant_id': None, 'created_at': now_iso(),
+    }
+    await db.users.insert_one(user_doc)
+    total = sum(i.price * i.quantity for i in data.items)
+    ts = now_iso()
+    order = {
+        'id': str(uuid.uuid4()), 'customer_id': user_id, 'customer_name': data.name,
+        'customer_phone': data.phone, 'restaurant_id': data.restaurant_id,
+        'restaurant_name': rest['name'], 'courier_id': None, 'courier_name': None,
+        'items': [i.dict() for i in data.items], 'total': total,
+        'delivery_address': data.delivery_address, 'delivery_lat': data.delivery_lat,
+        'delivery_lng': data.delivery_lng, 'notes': data.notes or '',
+        'status': 'pending', 'payment_method': 'cash_on_delivery',
+        'created_at': ts, 'updated_at': ts,
+    }
+    await db.orders.insert_one(order)
+    token = create_token(user_id, 'customer')
+    return AuthResponse(access_token=token, user=user_to_public(user_doc))
+
+
 @api_router.post("/orders", response_model=Order)
 async def create_order(data: OrderCreate, user: dict = Depends(require_roles('customer'))):
     rest = await db.restaurants.find_one({'id': data.restaurant_id}, {'_id': 0})
@@ -506,9 +668,11 @@ async def seed_data():
         'id': rest1_id, 'owner_id': owner1_id, 'name': 'Bella Napoli Pizzeria',
         'description': 'Authentic wood-fired pizza. Family-owned since 2005.',
         'cuisine': 'Pizza',
-        'image_url': 'https://images.pexels.com/photos/8177890/pexels-photo-8177890.jpeg',
+        'image_url': 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=800',
         'rating': 4.8, 'address': 'Istiklal Cd. 45, Beyoglu', 'lat': 41.0369, 'lng': 28.9850,
-        'delivery_minutes': 25, 'subscription_active': True, 'created_at': now_iso(),
+        'delivery_minutes': 25, 'subscription_active': True,
+        'is_featured': True, 'featured_tagline': 'Featured this week · Free drink with any order',
+        'created_at': now_iso(),
     })
     await db.users.insert_one({
         'id': owner1_id, 'email': 'owner1@directdine.com', 'password_hash': hash_password('password123'),
@@ -518,13 +682,13 @@ async def seed_data():
     # Menu items
     menu1 = [
         ('Margherita Pizza', 'Fresh mozzarella, basil, tomato', 89.0, 'Pizza',
-         'https://images.pexels.com/photos/15010285/pexels-photo-15010285.jpeg'),
+         'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400'),
         ('Pepperoni Pizza', 'Spicy pepperoni, mozzarella', 105.0, 'Pizza',
-         'https://images.pexels.com/photos/15010285/pexels-photo-15010285.jpeg'),
+         'https://images.unsplash.com/photo-1628840042765-356cda07504e?w=400'),
         ('Caesar Salad', 'Romaine, parmesan, croutons', 45.0, 'Salads',
-         'https://images.pexels.com/photos/15010285/pexels-photo-15010285.jpeg'),
+         'https://images.unsplash.com/photo-1546793665-c74683f339c1?w=400'),
         ('Tiramisu', 'Classic Italian dessert', 55.0, 'Desserts',
-         'https://images.pexels.com/photos/15010285/pexels-photo-15010285.jpeg'),
+         'https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?w=400'),
     ]
     for name, desc, price, cat, img in menu1:
         await db.menu_items.insert_one({
@@ -540,9 +704,10 @@ async def seed_data():
         'id': rest2_id, 'owner_id': owner2_id, 'name': 'Smash & Co. Burgers',
         'description': 'Handcrafted smash burgers. Fast, hot, and juicy.',
         'cuisine': 'Burgers',
-        'image_url': 'https://images.pexels.com/photos/15010285/pexels-photo-15010285.jpeg',
+        'image_url': 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800',
         'rating': 4.6, 'address': 'Bagdat Cd. 120, Kadikoy', 'lat': 40.9660, 'lng': 29.0625,
-        'delivery_minutes': 20, 'subscription_active': True, 'created_at': now_iso(),
+        'delivery_minutes': 20, 'subscription_active': True,
+        'is_featured': False, 'featured_tagline': '', 'created_at': now_iso(),
     })
     await db.users.insert_one({
         'id': owner2_id, 'email': 'owner2@directdine.com', 'password_hash': hash_password('password123'),
@@ -551,15 +716,47 @@ async def seed_data():
     })
     menu2 = [
         ('Classic Smash', 'Double patty, cheese, secret sauce', 120.0, 'Burgers',
-         'https://images.pexels.com/photos/15010285/pexels-photo-15010285.jpeg'),
+         'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400'),
         ('Chicken Deluxe', 'Crispy chicken, lettuce, pickles', 95.0, 'Burgers',
-         'https://images.pexels.com/photos/15010285/pexels-photo-15010285.jpeg'),
+         'https://images.unsplash.com/photo-1606755962773-d324e0a13086?w=400'),
         ('Truffle Fries', 'Golden fries with truffle oil', 40.0, 'Sides',
-         'https://images.pexels.com/photos/15010285/pexels-photo-15010285.jpeg'),
+         'https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=400'),
     ]
     for name, desc, price, cat, img in menu2:
         await db.menu_items.insert_one({
             'id': str(uuid.uuid4()), 'restaurant_id': rest2_id,
+            'name': name, 'description': desc, 'price': price, 'category': cat,
+            'image_url': img, 'available': True, 'created_at': now_iso(),
+        })
+
+    # Owner 3 - Sushi (featured)
+    owner3_id = str(uuid.uuid4())
+    rest3_id = str(uuid.uuid4())
+    await db.restaurants.insert_one({
+        'id': rest3_id, 'owner_id': owner3_id, 'name': 'Sakura Sushi Bar',
+        'description': 'Premium omakase, delivered by our own team.',
+        'cuisine': 'Sushi',
+        'image_url': 'https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=800',
+        'rating': 4.9, 'address': 'Nispetiye Cd. 12, Etiler', 'lat': 41.0810, 'lng': 29.0210,
+        'delivery_minutes': 35, 'subscription_active': True,
+        'is_featured': True, 'featured_tagline': 'Chef\'s pick · Fresh daily catch',
+        'created_at': now_iso(),
+    })
+    await db.users.insert_one({
+        'id': owner3_id, 'email': 'owner3@directdine.com', 'password_hash': hash_password('password123'),
+        'name': 'Kenji Tanaka', 'role': 'restaurant_owner', 'phone': '+905551110003',
+        'restaurant_id': rest3_id, 'created_at': now_iso(),
+    })
+    for name, desc, price, cat, img in [
+        ('Salmon Nigiri (6pc)', 'Fresh Norwegian salmon', 145.0, 'Nigiri',
+         'https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=400'),
+        ('Rainbow Roll', 'Assorted fish over California roll', 165.0, 'Rolls',
+         'https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=400'),
+        ('Miso Soup', 'Traditional soybean broth', 30.0, 'Sides',
+         'https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=400'),
+    ]:
+        await db.menu_items.insert_one({
+            'id': str(uuid.uuid4()), 'restaurant_id': rest3_id,
             'name': name, 'description': desc, 'price': price, 'category': cat,
             'image_url': img, 'available': True, 'created_at': now_iso(),
         })

@@ -7,37 +7,70 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { api } from '@/src/api/client';
+import { api, saveToken } from '@/src/api/client';
+import { useAuth } from '@/src/context/AuthContext';
 import { useCart } from '@/src/context/CartContext';
 import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
 
 export default function Cart() {
+  const { user, refresh } = useAuth();
   const { items, total, restaurantId, restaurantName, add, remove, clear } = useCart();
   const { t } = useI18n();
   const router = useRouter();
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
+  // Guest fields
+  const [name, setName] = useState(user?.name || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [phone, setPhone] = useState(user?.phone || '');
+  const [password, setPassword] = useState('');
   const [placing, setPlacing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  const isGuest = !user;
+
   const onPlace = async () => {
     if (!restaurantId || items.length === 0 || !address) return;
+    if (isGuest && (!name || !email || !phone || !password)) {
+      setErr('Please fill in your details');
+      return;
+    }
     setPlacing(true);
     setErr(null);
     try {
-      const res = await api.post('/orders', {
-        restaurant_id: restaurantId,
-        items: items.map((i) => ({
-          menu_item_id: i.menu_item_id, name: i.name, price: i.price, quantity: i.quantity,
-        })),
-        delivery_address: address,
-        delivery_lat: 41.0082,
-        delivery_lng: 28.9784,
-        notes,
-      });
+      let orderId: string;
+      if (isGuest) {
+        const res = await api.post('/orders/guest', {
+          name, email, phone, password,
+          restaurant_id: restaurantId,
+          items: items.map((i) => ({
+            menu_item_id: i.menu_item_id, name: i.name, price: i.price, quantity: i.quantity,
+          })),
+          delivery_address: address,
+          delivery_lat: 41.0082,
+          delivery_lng: 28.9784,
+          notes,
+        });
+        await saveToken(res.data.access_token);
+        await refresh();
+        // Find the just-placed order
+        const list = await api.get('/orders');
+        orderId = list.data[0].id;
+      } else {
+        const res = await api.post('/orders', {
+          restaurant_id: restaurantId,
+          items: items.map((i) => ({
+            menu_item_id: i.menu_item_id, name: i.name, price: i.price, quantity: i.quantity,
+          })),
+          delivery_address: address,
+          delivery_lat: 41.0082,
+          delivery_lng: 28.9784,
+          notes,
+        });
+        orderId = res.data.id;
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      const orderId = res.data.id;
       clear();
       router.replace(`/(customer)/tracking/${orderId}`);
     } catch (e: any) {
@@ -58,7 +91,7 @@ export default function Cart() {
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: 200 }} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: 220 }} keyboardShouldPersistTaps="handled">
           {items.length === 0 ? (
             <View style={styles.empty}>
               <Ionicons name="cart-outline" size={64} color={theme.colors.onSurfaceTertiary} />
@@ -66,6 +99,7 @@ export default function Cart() {
             </View>
           ) : (
             <>
+              <Text style={styles.sectionHead}>{t('orderSummary')}</Text>
               <Text style={styles.restName}>{restaurantName}</Text>
               {items.map((i) => (
                 <View key={i.menu_item_id} style={styles.item}>
@@ -92,27 +126,57 @@ export default function Cart() {
               ))}
 
               <View style={styles.codBox}>
-                <Ionicons name="cash-outline" size={22} color={theme.colors.success} />
+                <Ionicons name="cash-outline" size={22} color={theme.colors.brandDark} />
                 <View style={{ flex: 1, marginLeft: theme.spacing.md }}>
                   <Text style={styles.codTitle}>{t('payAtDoor')}</Text>
                   <Text style={styles.codDesc}>{t('payAtDoorDesc')}</Text>
                 </View>
               </View>
 
-              <Text style={styles.label}>{t('deliveryAddress')}</Text>
+              {isGuest && (
+                <>
+                  <Text style={styles.sectionHead}>{t('guestCheckoutTitle')}</Text>
+                  <Text style={styles.sectionSub}>{t('guestCheckoutSubtitle')}</Text>
+                  <View style={styles.inputRow}>
+                    <Ionicons name="person-outline" size={18} color={theme.colors.onSurfaceTertiary} />
+                    <TextInput testID="guest-name-input" style={styles.rowInput} placeholder={t('name')}
+                      placeholderTextColor={theme.colors.onSurfaceTertiary} value={name} onChangeText={setName} />
+                  </View>
+                  <View style={styles.inputRow}>
+                    <Ionicons name="mail-outline" size={18} color={theme.colors.onSurfaceTertiary} />
+                    <TextInput testID="guest-email-input" style={styles.rowInput} placeholder={t('email')} autoCapitalize="none"
+                      keyboardType="email-address" placeholderTextColor={theme.colors.onSurfaceTertiary} value={email} onChangeText={setEmail} />
+                  </View>
+                  <View style={styles.inputRow}>
+                    <Ionicons name="call-outline" size={18} color={theme.colors.onSurfaceTertiary} />
+                    <TextInput testID="guest-phone-input" style={styles.rowInput} placeholder={t('phone')} keyboardType="phone-pad"
+                      placeholderTextColor={theme.colors.onSurfaceTertiary} value={phone} onChangeText={setPhone} />
+                  </View>
+                  <View style={styles.inputRow}>
+                    <Ionicons name="lock-closed-outline" size={18} color={theme.colors.onSurfaceTertiary} />
+                    <TextInput testID="guest-password-input" style={styles.rowInput} placeholder={t('password')} secureTextEntry
+                      placeholderTextColor={theme.colors.onSurfaceTertiary} value={password} onChangeText={setPassword} />
+                  </View>
+                  <Pressable testID="cart-go-login" onPress={() => router.push('/(auth)/login')} style={styles.loginLink}>
+                    <Text style={styles.loginLinkTxt}>{t('alreadyHaveAccount')}</Text>
+                  </Pressable>
+                </>
+              )}
+
+              <Text style={styles.sectionHead}>{t('deliveryAddress')}</Text>
               <TextInput
                 testID="cart-address-input"
-                style={styles.textInput}
+                style={styles.textArea}
                 placeholder={t('deliveryAddress')}
                 placeholderTextColor={theme.colors.onSurfaceTertiary}
                 value={address}
                 onChangeText={setAddress}
                 multiline
               />
-              <Text style={styles.label}>{t('notes')}</Text>
+              <Text style={styles.sectionHead}>{t('notes')}</Text>
               <TextInput
                 testID="cart-notes-input"
-                style={styles.textInput}
+                style={styles.textArea}
                 placeholder={t('notes')}
                 placeholderTextColor={theme.colors.onSurfaceTertiary}
                 value={notes}
@@ -133,10 +197,12 @@ export default function Cart() {
             <Pressable
               testID="place-order-btn"
               onPress={onPlace}
-              disabled={placing || !address}
-              style={[styles.orderBtn, (!address || placing) && { opacity: 0.5 }]}
+              disabled={placing || !address || (isGuest && (!name || !email || !phone || !password))}
+              style={[styles.orderBtn, (placing || !address || (isGuest && (!name || !email || !phone || !password))) && { opacity: 0.5 }]}
             >
-              {placing ? <ActivityIndicator color="#fff" /> : <Text style={styles.orderTxt}>{t('placeOrder')}</Text>}
+              {placing ? <ActivityIndicator color="#fff" /> : (
+                <Text style={styles.orderTxt}>{isGuest ? t('createAccountAndOrder') : t('placeOrder')}</Text>
+              )}
             </Pressable>
           </SafeAreaView>
         )}
@@ -151,6 +217,8 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: theme.font.xl, fontWeight: '800', color: theme.colors.onSurface },
   empty: { alignItems: 'center', marginTop: 80, gap: theme.spacing.md },
   emptyTxt: { color: theme.colors.onSurfaceTertiary, fontSize: theme.font.lg },
+  sectionHead: { fontSize: theme.font.sm, color: theme.colors.onSurfaceTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: theme.spacing.lg, marginBottom: theme.spacing.sm, fontWeight: '700' },
+  sectionSub: { color: theme.colors.onSurfaceSecondary, marginBottom: theme.spacing.sm, fontSize: theme.font.sm },
   restName: { fontSize: theme.font.lg, fontWeight: '700', color: theme.colors.onSurface, marginBottom: theme.spacing.md },
   item: { flexDirection: 'row', alignItems: 'center', paddingVertical: theme.spacing.md, borderBottomWidth: 1, borderBottomColor: theme.colors.divider },
   itemName: { fontSize: theme.font.base, fontWeight: '600', color: theme.colors.onSurface },
@@ -158,11 +226,14 @@ const styles = StyleSheet.create({
   qtyRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
   qtyBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: theme.colors.surfaceSecondary, alignItems: 'center', justifyContent: 'center' },
   qty: { fontWeight: '700', fontSize: theme.font.base, minWidth: 20, textAlign: 'center' },
-  codBox: { flexDirection: 'row', alignItems: 'center', padding: theme.spacing.lg, backgroundColor: '#E8F7EC', borderRadius: theme.radius.md, marginTop: theme.spacing.lg },
+  codBox: { flexDirection: 'row', alignItems: 'center', padding: theme.spacing.lg, backgroundColor: theme.colors.brandTertiary, borderRadius: theme.radius.md, marginTop: theme.spacing.lg },
   codTitle: { fontWeight: '800', color: theme.colors.onSurface, fontSize: theme.font.base },
   codDesc: { color: theme.colors.onSurfaceSecondary, fontSize: theme.font.sm, marginTop: 2 },
-  label: { fontSize: theme.font.sm, color: theme.colors.onSurfaceTertiary, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: theme.spacing.lg, marginBottom: theme.spacing.sm, fontWeight: '700' },
-  textInput: { backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md, padding: theme.spacing.md, fontSize: theme.font.base, color: theme.colors.onSurface, minHeight: 52 },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md, paddingHorizontal: theme.spacing.md, height: 48, marginBottom: theme.spacing.sm },
+  rowInput: { flex: 1, fontSize: theme.font.base, color: theme.colors.onSurface },
+  loginLink: { paddingVertical: theme.spacing.sm, alignItems: 'center' },
+  loginLinkTxt: { color: theme.colors.brand, fontWeight: '700' },
+  textArea: { backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md, padding: theme.spacing.md, fontSize: theme.font.base, color: theme.colors.onSurface, minHeight: 60 },
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: theme.colors.surface, borderTopWidth: 1, borderTopColor: theme.colors.divider, padding: theme.spacing.lg },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: theme.spacing.md },
   totalLabel: { fontSize: theme.font.lg, color: theme.colors.onSurfaceSecondary },
