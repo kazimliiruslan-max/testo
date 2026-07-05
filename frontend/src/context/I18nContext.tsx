@@ -121,6 +121,11 @@ const strings = {
     guest: 'Guest',
     orderSummary: 'Order summary',
     yourInfo: 'Your info',
+    addressExtraPlaceholder: 'Apartment, floor, doorbell, landmark...',
+    notesPlaceholder: 'e.g. leave at door, no onions, ring twice',
+    pickOnMap: 'Pick location on map',
+    dropPinHere: 'Drop pin here',
+    useCurrentLocation: 'Use current location',
   },
   tr: {
     welcome: 'DirectDine\'e Hoş Geldiniz',
@@ -232,6 +237,11 @@ const strings = {
     guest: 'Misafir',
     orderSummary: 'Sipariş özeti',
     yourInfo: 'Bilgileriniz',
+    addressExtraPlaceholder: 'Daire, kat, zil, işaret...',
+    notesPlaceholder: 'ör: kapıya bırak, soğansız, iki kez çal',
+    pickOnMap: 'Haritada konum seç',
+    dropPinHere: 'Bu noktayı seç',
+    useCurrentLocation: 'Mevcut konumu kullan',
   },
 };
 

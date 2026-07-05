@@ -30,7 +30,7 @@ export default function CustomerProfile() {
       await api.post('/auth/switch-to-owner', { restaurant_name: restName.trim() });
       await refresh();
       setShowRestaurantSetup(false);
-      router.replace('/(owner)/orders');
+      router.replace('/(owner)/dashboard');
     } catch (e: any) {
       setErr(e?.response?.data?.detail || t('error'));
     } finally {
@@ -45,7 +45,7 @@ export default function CustomerProfile() {
       return;
     }
     if (user.role === 'restaurant_owner') {
-      router.replace('/(owner)/orders');
+      router.replace('/(owner)/dashboard');
       return;
     }
     setShowRestaurantSetup(true);
@@ -84,7 +84,7 @@ export default function CustomerProfile() {
         <Text style={styles.sectionLabel}>Business</Text>
         {user?.role === 'restaurant_owner' ? (
           <>
-            <Pressable testID="go-restaurant-dashboard" onPress={() => router.replace('/(owner)/orders')} style={styles.rowBtn}>
+            <Pressable testID="go-restaurant-dashboard" onPress={() => router.replace('/(owner)/dashboard')} style={styles.rowBtn}>
               <Ionicons name="storefront" size={22} color={theme.colors.brand} />
               <Text style={styles.rowBtnTxt}>Restaurant Dashboard</Text>
               <Ionicons name="chevron-forward" size={18} color={theme.colors.onSurfaceTertiary} />

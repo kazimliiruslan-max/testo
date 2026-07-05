@@ -26,7 +26,7 @@ export default function LoginScreen() {
     try {
       const u = await login(email.trim(), password);
       if (u.role === 'customer') router.replace('/(customer)/home');
-      else if (u.role === 'restaurant_owner') router.replace('/(owner)/orders');
+      else if (u.role === 'restaurant_owner') router.replace('/(owner)/dashboard');
       else router.replace('/(courier)/deliveries');
     } catch (e: any) {
       setErr(e?.response?.data?.detail || t('invalidCredentials'));

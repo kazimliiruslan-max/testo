@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 3 — all spec items PASS. Backend: 36/36 pytest (24 legacy + 12 new). Frontend (mobile 390x844): (1) ROUTE FIX verified — owner1 login lands on URL /dashboard rendering owner-orders-list with Subscription Active badge, Active Orders/Couriers stat cards, and pending-badge (count=5). customer1 lands on /home; courier1 lands on /deliveries with Update My Location button. (2) Owner polling notification banner + pending-badge: posted a fresh guest order to Bella Napoli via in-page fetch → 'New order!' green banner slid in at t<0.5s and pending-badge remained visible. (3) LocationPicker (web) rendered on /cart with testIDs location-picker, picker-address-input, address-extra-input, cart-notes-input, use-current-location-btn, and 2 Google Maps iframes. Coordinates default to Istanbul (41.0369, 28.985). (4) End-to-end guest checkout with picker address 'Kadikoy Bahariye 25' + address-extra 'Apt 5, Floor 3' + notes 'leave at door' + guest name/email/phone/password → tap 'Create Account & Place Order' → POST /api/orders/guest captured with delivery_address='Kadikoy Bahariye 25 — Apt 5, Floor 3' (em-dash present), delivery_lat=41.0369, delivery_lng=28.985 (non-zero), notes='leave at door' → redirected to /tracking/{id} showing 'Bella Napoli Pizzeria' + destination lat/lng in timeline card. (5) i18n toggle EN↔TR works ('Hoş Geldiniz' visible after TR). addressExtraPlaceholder + notesPlaceholder both have Turkish translations verified in /app/frontend/src/context/I18nContext.tsx lines 240–241. Route collision from iteration_2 is fully resolved.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "(customer)/tracking", "issues": ["Web preview shows placeholder 'Live Map' box because react-native-maps is stubbed on web (expected per mocked_apis)."]}
+    ],
+    "react_native_issues": [
+      {"component": "Global styles", "issue": "Console warnings from prior iterations may persist: 'shadow*' style props deprecated (use boxShadow) and 'props.pointerEvents' deprecated. Non-blocking."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_directdine_api.py",
+    "/app/backend/tests/test_directdine_new_features.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "MINOR: Backend test file test_directdine_new_features.py permanently mutates customer1 role (promotes to restaurant_owner via /auth/switch-to-owner) which breaks subsequent legacy tests that rely on customer1 being a customer. Reset was done manually in mongo. Consider either (a) using an ephemeral TEST_-prefixed customer in the switch-to-owner test, or (b) adding a teardown that resets customer1 back to role='customer' via a direct DB touch or a new admin endpoint.",
+    "LOW (carry-forward): Migrate deprecated 'shadow*' and 'pointerEvents' RN web style props.",
+    "LOW (carry-forward): server.py now ~820 lines; consider splitting into routers/models modules."
+  ],
+  "critical_code_review_comments": [
+    "Route collision resolved by renaming (owner)/orders → (owner)/dashboard — clean fix; URL now unambiguous.",
+    "cart.tsx correctly composes delivery_address as `${picker.address} — ${extra}` (em-dash) when extra is present and picker committed.",
+    "LocationPicker.web.tsx defaults coordinates to Istanbul (41.0369, 28.985) and calls onChange on every keystroke — Place Order button becomes enabled correctly once address+guest fields are populated.",
+    "LocationPicker.web.tsx auto-requests browser geolocation on mount; falls back gracefully on denial/timeout.",
+    "I18n has full Turkish translations for both new keys (addressExtraPlaceholder, notesPlaceholder)."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_3.json (new)",
+    "/app/test_reports/pytest/pytest_results.xml (regenerated)"
+  ],
+  "success_rate": {"backend": "100% (36/36)", "frontend": "100% — all 11 spec items verified"},
+  "seed_data_creation": "Seeded users used as-is. Tests created ephemeral TEST_-prefixed guest orders/users. Manually reset customer1 role to 'customer' via mongo after tests promoted it to restaurant_owner.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Route collision fully resolved (owner → /dashboard). Location picker fully wired on web. If retesting: before running pytest, run `mongosh test_database --eval 'db.users.updateOne({email:\"customer1@directdine.com\"},{$set:{role:\"customer\"},$unset:{restaurant_id:\"\"}})'` to undo the switch-to-owner side effect from test_directdine_new_features.py. In Playwright, click floating-cart bar by text ('Checkout') if data-testid='floating-cart-btn' is not present on restaurant screen — cart items persist via CartContext across navigation.",
+  "rca_of_issue": "N/A — no functional bugs. Minor test-suite hygiene note: switch-to-owner integration test mutates the seeded customer1 permanently, causing legacy customer-role tests to fail on re-run until DB is reset. Not a product bug — a test-isolation issue."
+}

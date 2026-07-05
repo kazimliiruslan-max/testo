@@ -11,7 +11,7 @@ export default function OwnerTabsLayout() {
       tabBarActiveTintColor: theme.colors.brand,
       tabBarInactiveTintColor: theme.colors.onSurfaceTertiary,
     }}>
-      <Tabs.Screen name="orders" options={{
+      <Tabs.Screen name="dashboard" options={{
         title: t('tab_owner_orders'),
         tabBarIcon: ({ color, size }) => <Ionicons name="list-outline" size={size} color={color} />,
       }} />

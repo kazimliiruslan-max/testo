@@ -14,7 +14,7 @@ export default function Index() {
     if (!user || user.role === 'customer') {
       router.replace('/(customer)/home');
     } else if (user.role === 'restaurant_owner') {
-      router.replace('/(owner)/orders');
+      router.replace('/(owner)/dashboard');
     } else if (user.role === 'courier') {
       router.replace('/(courier)/deliveries');
     }

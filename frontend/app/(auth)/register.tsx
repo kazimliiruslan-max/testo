@@ -39,7 +39,7 @@ export default function RegisterScreen() {
         phone: phone || undefined, restaurant_name: restaurantName || undefined,
       });
       if (u.role === 'customer') router.replace('/(customer)/home');
-      else router.replace('/(owner)/orders');
+      else router.replace('/(owner)/dashboard');
     } catch (e: any) {
       setErr(e?.response?.data?.detail || t('error'));
     } finally {

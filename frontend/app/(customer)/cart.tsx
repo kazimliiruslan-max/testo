@@ -12,13 +12,15 @@ import { useAuth } from '@/src/context/AuthContext';
 import { useCart } from '@/src/context/CartContext';
 import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
+import LocationPicker, { PickedLocation } from '@/src/components/LocationPicker';
 
 export default function Cart() {
   const { user, refresh } = useAuth();
   const { items, total, restaurantId, restaurantName, add, remove, clear } = useCart();
   const { t } = useI18n();
   const router = useRouter();
-  const [address, setAddress] = useState('');
+  const [pickedLoc, setPickedLoc] = useState<PickedLocation | null>(null);
+  const [addressExtra, setAddressExtra] = useState('');
   const [notes, setNotes] = useState('');
   // Guest fields
   const [name, setName] = useState(user?.name || '');
@@ -29,9 +31,11 @@ export default function Cart() {
   const [err, setErr] = useState<string | null>(null);
 
   const isGuest = !user;
+  const fullAddress = pickedLoc ? `${pickedLoc.address}${addressExtra ? ` — ${addressExtra}` : ''}` : '';
+  const canPlace = !!pickedLoc && (!isGuest || (name && email && phone && password));
 
   const onPlace = async () => {
-    if (!restaurantId || items.length === 0 || !address) return;
+    if (!restaurantId || items.length === 0 || !pickedLoc) return;
     if (isGuest && (!name || !email || !phone || !password)) {
       setErr('Please fill in your details');
       return;
@@ -47,14 +51,13 @@ export default function Cart() {
           items: items.map((i) => ({
             menu_item_id: i.menu_item_id, name: i.name, price: i.price, quantity: i.quantity,
           })),
-          delivery_address: address,
-          delivery_lat: 41.0082,
-          delivery_lng: 28.9784,
+          delivery_address: fullAddress,
+          delivery_lat: pickedLoc.lat,
+          delivery_lng: pickedLoc.lng,
           notes,
         });
         await saveToken(res.data.access_token);
         await refresh();
-        // Find the just-placed order
         const list = await api.get('/orders');
         orderId = list.data[0].id;
       } else {
@@ -63,9 +66,9 @@ export default function Cart() {
           items: items.map((i) => ({
             menu_item_id: i.menu_item_id, name: i.name, price: i.price, quantity: i.quantity,
           })),
-          delivery_address: address,
-          delivery_lat: 41.0082,
-          delivery_lng: 28.9784,
+          delivery_address: fullAddress,
+          delivery_lat: pickedLoc.lat,
+          delivery_lng: pickedLoc.lng,
           notes,
         });
         orderId = res.data.id;
@@ -164,20 +167,25 @@ export default function Cart() {
               )}
 
               <Text style={styles.sectionHead}>{t('deliveryAddress')}</Text>
+              <LocationPicker
+                testID="location-picker"
+                value={pickedLoc}
+                onChange={setPickedLoc}
+              />
               <TextInput
-                testID="cart-address-input"
-                style={styles.textArea}
-                placeholder={t('deliveryAddress')}
+                testID="address-extra-input"
+                style={[styles.textArea, { marginTop: theme.spacing.md }]}
+                placeholder={t('addressExtraPlaceholder')}
                 placeholderTextColor={theme.colors.onSurfaceTertiary}
-                value={address}
-                onChangeText={setAddress}
+                value={addressExtra}
+                onChangeText={setAddressExtra}
                 multiline
               />
               <Text style={styles.sectionHead}>{t('notes')}</Text>
               <TextInput
                 testID="cart-notes-input"
                 style={styles.textArea}
-                placeholder={t('notes')}
+                placeholder={t('notesPlaceholder')}
                 placeholderTextColor={theme.colors.onSurfaceTertiary}
                 value={notes}
                 onChangeText={setNotes}
@@ -197,8 +205,8 @@ export default function Cart() {
             <Pressable
               testID="place-order-btn"
               onPress={onPlace}
-              disabled={placing || !address || (isGuest && (!name || !email || !phone || !password))}
-              style={[styles.orderBtn, (placing || !address || (isGuest && (!name || !email || !phone || !password))) && { opacity: 0.5 }]}
+              disabled={placing || !canPlace}
+              style={[styles.orderBtn, (placing || !canPlace) && { opacity: 0.5 }]}
             >
               {placing ? <ActivityIndicator color="#fff" /> : (
                 <Text style={styles.orderTxt}>{isGuest ? t('createAccountAndOrder') : t('placeOrder')}</Text>
