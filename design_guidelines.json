@@ -1,0 +1,221 @@
+{
+  "app_name": "DirectDine",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "An appetizing, warm, and highly functional food delivery experience that highlights the direct restaurant-to-user connection without visual clutter.",
+  "color": {
+    "surface": "#FFFFFF",
+    "onSurface": "#1A1A1A",
+    "surfaceSecondary": "#F5F5F5",
+    "onSurfaceSecondary": "#4A4A4A",
+    "surfaceTertiary": "#EBEBEB",
+    "onSurfaceTertiary": "#7A7A7A",
+    "surfaceInverse": "#1A1A1A",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#E05C36",
+    "brandPrimary": "#E05C36",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#F27B57",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#FBE7E1",
+    "onBrandTertiary": "#E05C36",
+    "success": "#34C759",
+    "onSuccess": "#FFFFFF",
+    "warning": "#FF9500",
+    "onWarning": "#FFFFFF",
+    "error": "#FF3B30",
+    "onError": "#FFFFFF",
+    "info": "#8E8E93",
+    "onInfo": "#FFFFFF",
+    "border": "#E5E5EA",
+    "borderStrong": "#C7C7CC",
+    "divider": "#F2F2F7",
+    "dark": {
+      "surface": "#121212",
+      "onSurface": "#F5F5F5",
+      "surfaceSecondary": "#1C1C1E",
+      "onSurfaceSecondary": "#D1D1D6",
+      "surfaceTertiary": "#2C2C2E",
+      "onSurfaceTertiary": "#8E8E93",
+      "surfaceInverse": "#F5F5F5",
+      "onSurfaceInverse": "#121212",
+      "brand": "#E05C36",
+      "brandPrimary": "#E05C36",
+      "onBrandPrimary": "#FFFFFF",
+      "brandSecondary": "#D04B26",
+      "onBrandSecondary": "#FFFFFF",
+      "brandTertiary": "#3E211A",
+      "onBrandTertiary": "#F27B57",
+      "success": "#30D158",
+      "onSuccess": "#FFFFFF",
+      "warning": "#FF9F0A",
+      "onWarning": "#FFFFFF",
+      "error": "#FF453A",
+      "onError": "#FFFFFF",
+      "info": "#98989D",
+      "onInfo": "#FFFFFF",
+      "border": "#38383A",
+      "borderStrong": "#48484A",
+      "divider": "#2C2C2E"
+    }
+  },
+  "typography": {
+    "displayFontFamily": "Plus Jakarta Sans",
+    "textFontFamily": "Plus Jakarta Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous iOS-native rhythms. Content must never touch the screen edge without padding (lg or xl). Forms and rows breathe with vertical md/lg spacing. Hit targets minimum 44pt.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Ionicons",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use expo-blur on bottom tab bar to let restaurant images softly bleed through.",
+      "Apply to sticky headers over scrolling menus.",
+      "Use for Floating Action Buttons or map overlays (e.g., Courier location chip)."
+    ],
+    "dont's": [
+      "Never blur body text cards or form fields.",
+      "Don't stack more than 2 blurred surfaces per screen."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler",
+    "map": "react-native-maps"
+  },
+  "screens": [
+    {
+      "name": "Auth / Role Selection",
+      "purpose": "Simple JWT email/password entry with role selection (Customer, Restaurant Owner, Courier).",
+      "states": {
+        "loading": "Centered brandPrimary spinner.",
+        "empty": "N/A",
+        "error": "Error toast with clear messaging."
+      },
+      "layout": "Clean column layout. Hero logo top. Segmented control for Role (Customer | Restaurant | Courier). Email and password inputs floating. Full-width sticky pill button for Login/Register at bottom."
+    },
+    {
+      "name": "Customer Home",
+      "purpose": "Discover restaurants natively without commission fluff.",
+      "states": {
+        "loading": "Skeleton cards mimicking the layout.",
+        "empty": "Illustration 'No restaurants found in your area yet.'",
+        "error": "Failed to load feed. Retry CTA."
+      },
+      "layout": "Top sticky search bar (glassmorphism if scrolled under). Horizontal scrollable chips for cuisines (Pizza, Burgers). Full-width or edge-to-edge featured restaurant cards with large imagery, name, rating, and prominent '0% Commission' badge. Bottom tab navigation."
+    },
+    {
+      "name": "Restaurant Menu / Detail",
+      "purpose": "View categories and items of a selected restaurant.",
+      "states": {
+        "loading": "Skeleton of header and list rows.",
+        "empty": "No menu items available.",
+        "error": "Error loading menu."
+      },
+      "layout": "Large hero image of restaurant exterior at the top with gradient scrim overlay holding restaurant name. Sticky category sub-navigation underneath. Vertical list of menu items (photo on right, text on left). Bottom FAB or sticky glass sheet showing Cart Total and 'Checkout' button."
+    },
+    {
+      "name": "Checkout (Cash on Delivery)",
+      "purpose": "Finalize order using COD only, ensuring zero-commission clarity.",
+      "states": {
+        "loading": "Processing order overlay.",
+        "empty": "Cart is empty.",
+        "error": "Order submission failed."
+      },
+      "layout": "Summary of items. A strong, highlighted surfaceTertiary box explaining 'Pay at Door - No Platform Commission'. Delivery address input. Sticky primary CTA pinned at the bottom 'Place Order'."
+    },
+    {
+      "name": "Order Tracking (Map)",
+      "purpose": "Live map view showing courier location and delivery status.",
+      "states": {
+        "loading": "Map loading overlay.",
+        "empty": "No active orders.",
+        "error": "Unable to connect to live tracking."
+      },
+      "layout": "Full-bleed react-native-maps view taking up the upper 60% of the screen. A persistent bottom sheet (using @gorhom/bottom-sheet) housing courier details (avatar, name, call button), ETA, and a step-by-step vertical status timeline."
+    },
+    {
+      "name": "Restaurant Owner Dashboard",
+      "purpose": "Manage orders, menu, couriers, and mock subscription status.",
+      "states": {
+        "loading": "Skeleton stats and lists.",
+        "empty": "No recent orders.",
+        "error": "Dashboard failed to load."
+      },
+      "layout": "Top row of stat cards (Active Orders, Total Couriers). A 'Subscription Active' badge in surfaceSecondary. Segmented controls to toggle between 'Live Orders' and 'Courier Fleet'. List view of orders with clear 'Assign Courier' button."
+    },
+    {
+      "name": "Courier Dashboard",
+      "purpose": "View assigned orders and update delivery status/location.",
+      "states": {
+        "loading": "Skeleton list.",
+        "empty": "No assigned deliveries right now. Take a break!",
+        "error": "Failed to sync deliveries."
+      },
+      "layout": "Map preview at top highlighting current assigned route. Large card showing current active order details with big swipe-to-confirm or pressable pill buttons for 'Picked Up', 'On The Way', and 'Delivered'."
+    }
+  ],
+  "images": {
+    "hero_burger": {
+      "url": "https://images.pexels.com/photos/15010285/pexels-photo-15010285.jpeg",
+      "alt": "Gourmet burger"
+    },
+    "hero_pizza_exterior": {
+      "url": "https://images.pexels.com/photos/8177890/pexels-photo-8177890.jpeg",
+      "alt": "Cozy pizza restaurant exterior"
+    },
+    "hero_pizza_exterior_alt": {
+      "url": "https://images.pexels.com/photos/5902957/pexels-photo-5902957.jpeg",
+      "alt": "Pizza outdoor dining"
+    },
+    "courier_avatar": {
+      "url": "https://images.unsplash.com/photo-1617347454431-f49d7ff5c3b1?crop=entropy&cs=srgb&fm=jpg",
+      "alt": "Delivery courier on motorcycle"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Apply '1 iOS-Native Clean' personality with a warm Terracotta (#E05C36) accent instead of the banned blue/purple. This gives an appetizing, food-focused energy.",
+    "Implement react-native-maps for the tracking screen with a minimalist bottom sheet containing courier details and status timeline.",
+    "Ensure 'Cash on Delivery' and 'No Commission' messaging is distinctively styled in the Checkout flow to emphasize the app's core value proposition.",
+    "For all images that text sits on top of (e.g., Restaurant details header), implement the mandatory gradient-to-dark scrim pattern (transparent to >=70% surfaceInverse).",
+    "Keep navigation clear with distinct bottom tabs for the 3 different roles (Customer, Owner, Courier) depending on the authenticated state.",
+    "Implement multi-language toggle (EN/TR) cleanly in the profile/settings area using a segmented control or toggle row.",
+    "Add tactile feedback (haptics) on order placement, status changes by couriers, and adding items to cart."
+  ],
+  "haptics": {
+    "add_to_cart": "light",
+    "place_order": "success",
+    "courier_status_update": "heavy",
+    "role_toggle": "selection"
+  }
+}
