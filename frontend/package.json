@@ -14,7 +14,9 @@
   "dependencies": {
     "@expo/metro-runtime": "6.1.2",
     "@expo/vector-icons": "15.1.1",
+    "@gorhom/bottom-sheet": "5.2.14",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "axios": "1.18.1",
     "date-fns": "4.1.0",
     "dayjs": "1.11.13",
     "expo": "54.0.35",
@@ -37,6 +39,7 @@
     "react-native": "0.81.5",
     "react-native-dotenv": "3.4.11",
     "react-native-gesture-handler": "2.28.0",
+    "react-native-maps": "1.20.1",
     "react-native-reanimated": "4.1.1",
     "react-native-safe-area-context": "5.6.0",
     "react-native-screens": "4.16.0",
