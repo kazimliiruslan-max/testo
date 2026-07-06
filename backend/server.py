@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, status
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
 from fastapi.security import OAuth2PasswordBearer
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -7,9 +7,12 @@ import os
 import logging
 import uuid
 import secrets
+import json
 import jwt
 import bcrypt
+import httpx
 import resend
+import asyncio
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Literal
@@ -31,10 +34,79 @@ RESEND_FROM = os.environ.get('RESEND_FROM', 'DirectDine <onboarding@resend.dev>'
 if RESEND_API_KEY:
     resend.api_key = RESEND_API_KEY
 
+# --- Emergent Push ---
+PUSH_BASE_URL = "https://integrations.emergentagent.com"
+PUSH_KEY = os.environ.get("EMERGENT_PUSH_KEY", "placeholder")
+_push_client = httpx.AsyncClient(
+    base_url=PUSH_BASE_URL,
+    headers={"X-Push-Key": PUSH_KEY},
+    timeout=10.0,
+)
+
 app = FastAPI(title="DirectDine API")
 api_router = APIRouter(prefix="/api")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
+
+
+# ---------- WebSocket connection manager ----------
+class WSManager:
+    def __init__(self):
+        # user_id -> list[WebSocket]
+        self.connections: dict[str, list[WebSocket]] = {}
+
+    async def connect(self, user_id: str, ws: WebSocket):
+        await ws.accept()
+        self.connections.setdefault(user_id, []).append(ws)
+
+    def disconnect(self, user_id: str, ws: WebSocket):
+        conns = self.connections.get(user_id, [])
+        if ws in conns:
+            conns.remove(ws)
+        if not conns:
+            self.connections.pop(user_id, None)
+
+    async def send(self, user_id: str, message: dict):
+        conns = list(self.connections.get(user_id, []))
+        for ws in conns:
+            try:
+                await ws.send_text(json.dumps(message))
+            except Exception:
+                self.disconnect(user_id, ws)
+
+    async def broadcast_to_users(self, user_ids: list[str], message: dict):
+        for uid in user_ids:
+            await self.send(uid, message)
+
+ws_manager = WSManager()
+
+
+# ---------- Push notifications helper ----------
+async def send_push(recipients: list[str], data: dict, idempotency_key: str | None = None) -> None:
+    """Emergent push. Non-fatal on failure."""
+    if not recipients:
+        return
+    if 'title' not in data or 'message' not in data:
+        raise ValueError("data must include title and message")
+    if len(recipients) > 100:
+        raise ValueError("max 100 recipients per /trigger call")
+    payload: dict = {"recipients": recipients, "data": data}
+    if idempotency_key:
+        payload["$idempotency_key"] = idempotency_key
+    try:
+        resp = await _push_client.post("/api/v1/push/trigger", json=payload)
+        if resp.status_code >= 400:
+            logging.getLogger(__name__).warning(f"[PUSH] non-2xx: {resp.status_code} body={resp.text[:200]}")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"[PUSH] send failed: {e}")
+
+
+class RegisterPushBody(BaseModel):
+    user_id: str
+    platform: str
+    device_token: str
+
+
 
 Role = Literal['customer', 'restaurant_owner', 'courier']
 
@@ -660,6 +732,22 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles('cu
     }
     await db.orders.insert_one(order)
     order.pop('_id', None)
+    # Notify owner in real-time + push
+    try:
+        rest = await db.restaurants.find_one({'id': data.restaurant_id}, {'_id': 0})
+        if rest:
+            await ws_manager.send(rest['owner_id'], {
+                'type': 'order_new', 'order_id': order['id'], 'customer_name': order['customer_name'],
+                'total': order['total'], 'restaurant_name': order['restaurant_name'],
+            })
+            asyncio.create_task(send_push(
+                [rest['owner_id']],
+                {'title': 'New order 🛎️', 'message': f"{order['customer_name']} · ₺{order['total']:.2f}",
+                 'action_url': '/(owner)/dashboard'},
+                idempotency_key=f"new:{order['id']}",
+            ))
+    except Exception as e:
+        logger.warning(f"[NOTIFY] new-order failed: {e}")
     return Order(**order)
 
 @api_router.get("/orders", response_model=List[Order])
@@ -701,6 +789,22 @@ async def assign_courier(oid: str, data: AssignCourierInput, user: dict = Depend
         'updated_at': now_iso(),
     }})
     doc = await db.orders.find_one({'id': oid}, {'_id': 0})
+    # WS notify customer + courier
+    try:
+        await ws_manager.broadcast_to_users(
+            [doc['customer_id'], data.courier_id],
+            {'type': 'order_assigned', 'order_id': oid, 'status': doc['status'],
+             'courier_name': courier['name'], 'restaurant_name': doc['restaurant_name']}
+        )
+        asyncio.create_task(send_push(
+            [data.courier_id],
+            {'title': 'New delivery assigned 🛵',
+             'message': f"{doc['customer_name']} · {doc['delivery_address'][:60]}",
+             'action_url': '/(courier)/deliveries'},
+            idempotency_key=f"assign:{oid}",
+        ))
+    except Exception as e:
+        logger.warning(f"[NOTIFY] assign failed: {e}")
     return Order(**doc)
 
 @api_router.post("/orders/{oid}/status", response_model=Order)
@@ -724,6 +828,35 @@ async def update_order_status(oid: str, data: OrderStatusUpdate, user: dict = De
         raise HTTPException(status_code=403, detail="Forbidden")
     await db.orders.update_one({'id': oid}, {'$set': {'status': data.status, 'updated_at': now_iso()}})
     doc = await db.orders.find_one({'id': oid}, {'_id': 0})
+    # Broadcast + push on important transitions
+    try:
+        recipients_ws = [doc['customer_id']]
+        # Restaurant owner
+        rest = await db.restaurants.find_one({'id': doc['restaurant_id']}, {'_id': 0})
+        if rest:
+            recipients_ws.append(rest['owner_id'])
+        if doc.get('courier_id'):
+            recipients_ws.append(doc['courier_id'])
+        await ws_manager.broadcast_to_users(recipients_ws, {
+            'type': 'order_status', 'order_id': oid, 'status': data.status,
+            'customer_name': doc['customer_name'], 'restaurant_name': doc['restaurant_name'],
+            'total': doc['total'], 'courier_name': doc.get('courier_name'),
+        })
+        if data.status == 'delivered':
+            push_recipients = [doc['customer_id']]
+            if rest:
+                push_recipients.append(rest['owner_id'])
+            asyncio.create_task(send_push(
+                push_recipients,
+                {
+                    'title': 'Order delivered ✅',
+                    'message': f"Your order from {doc['restaurant_name']} was delivered. Enjoy your meal!",
+                    'action_url': f"/(customer)/tracking/{oid}",
+                },
+                idempotency_key=f"delivered:{oid}",
+            ))
+    except Exception as e:
+        logger.warning(f"[NOTIFY] status update side-effects failed: {e}")
     return Order(**doc)
 
 
@@ -901,6 +1034,64 @@ async def seed_data():
 @api_router.get("/")
 async def root():
     return {'message': 'DirectDine API', 'version': '1.0'}
+
+
+@api_router.post("/register-push", status_code=201)
+async def register_push(body: RegisterPushBody):
+    """Relay to Emergent push registration. Non-fatal on failure so app stays usable."""
+    try:
+        resp = await _push_client.post("/api/v1/push/users/register", json=body.dict())
+        if resp.status_code == 401 or resp.status_code == 403:
+            # placeholder / missing key: queue silently so app stays usable
+            logging.getLogger(__name__).warning(
+                f"[PUSH] register upstream auth failed ({resp.status_code}); queued"
+            )
+            return {"status": "queued"}
+        if resp.status_code >= 500:
+            logging.getLogger(__name__).warning(
+                f"[PUSH] register upstream 5xx ({resp.status_code}); queued"
+            )
+            return {"status": "queued"}
+        resp.raise_for_status()
+        return {"status": "registered"}
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"[PUSH] register failed: {e}")
+        return {"status": "queued"}
+
+
+# ---------- WebSocket: real-time order events ----------
+@app.websocket("/api/ws/orders")
+async def ws_orders(ws: WebSocket, token: str | None = None):
+    """Client connects with ?token=<jwt>. Receives JSON messages when their orders update."""
+    # Accept first so we can send a WebSocket close frame with our custom code.
+    # (Calling ws.close() before accept() results in an HTTP 403 handshake
+    # failure, which clients see as a connection error rather than the
+    # documented 4401 close code.)
+    await ws.accept()
+    if not token:
+        await ws.close(code=4401)
+        return
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = payload.get('sub')
+    except Exception:
+        await ws.close(code=4401)
+        return
+    if not user_id:
+        await ws.close(code=4401)
+        return
+    # Register connection (note: already accepted; adjust manager if needed)
+    ws_manager.connections.setdefault(user_id, []).append(ws)
+    try:
+        # keep alive; ignore client-sent messages (we're broadcast-only)
+        while True:
+            await ws.receive_text()
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        ws_manager.disconnect(user_id, ws)
 
 
 app.include_router(api_router)

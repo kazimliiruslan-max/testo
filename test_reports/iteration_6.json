@@ -1,0 +1,58 @@
+{
+  "summary": "Iteration 6 — WebSocket real-time events + push scaffolding. Backend: 65/65 pytest pass (59 legacy + 6 new iter6 covering WS auth close-code 4401, order_new broadcast to owner, full lifecycle order_status broadcast to owner+customer, order_assigned broadcast to customer+courier, delivered status broadcast to courier, and /api/register-push non-fatal with placeholder EMERGENT_PUSH_KEY). Two backend bugs were found and FIXED during this run (see rca_of_issue): (a) /api/register-push previously returned HTTP 500 with placeholder key — spec required {status:'queued'}; (b) WS endpoint called ws.close(code=4401) BEFORE ws.accept(), which Starlette converts to HTTP 403 during handshake, so clients could not observe the 4401 close code. After fixes, all 6 iter6 tests pass and clients see 4401 as documented. Frontend (390x844 web preview, owner1 login): app loads cleanly on web, no red screen; owner dashboard reflects a newly-posted customer order almost immediately (pending 29→30, new card at top, 'New order!' banner triggered by WS handler) — confirms useOrderEvents hook is wired and receiving. Non-blocking: one CRITICAL code-review finding in AuthContext.tsx (missing imports for Platform + Notifications) — see critical_code_review_comments; the .catch() swallows the ReferenceError silently so the login flow still works on web, but push registration on NATIVE builds will NEVER succeed. Also note: googleServicesFile ./google-services.json is referenced in app.json but the file is not present in /app/frontend — only affects EAS Android builds, not preview.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "AuthContext.tsx", "issue": "Uses Platform.OS and Notifications.requestPermissionsAsync / getDevicePushTokenAsync without importing them. Since registerPushForUser is async, the ReferenceError becomes a rejected promise that .catch(()=>{}) swallows silently — so login/register/refresh still work, BUT push registration on native builds will NEVER succeed because the function throws before reaching the Notifications calls. Reference: /app/frontend/src/context/AuthContext.tsx:30-42."},
+      {"component": "app.json", "issue": "android.googleServicesFile references './google-services.json' but the file does not exist in /app/frontend. Only impacts EAS Android production builds, not Expo Go / web preview. Reference: /app/frontend/app.json:26."},
+      {"component": "Global styles", "issue": "Carry-over console warnings: 'shadow*' style props deprecated (use boxShadow) and 'props.pointerEvents' deprecated (use style.pointerEvents). Non-blocking."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_directdine_iter6.py",
+    "/app/backend/tests/test_directdine_iter5.py",
+    "/app/backend/tests/test_directdine_iter4.py",
+    "/app/backend/tests/test_directdine_api.py",
+    "/app/backend/tests/test_directdine_new_features.py",
+    "/app/test_reports/pytest/pytest_iter6.xml",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "HIGH: fix /app/frontend/src/context/AuthContext.tsx — add missing imports at top: `import { Platform } from 'react-native';` and `import * as Notifications from 'expo-notifications';`. Currently registerPushForUser throws ReferenceError on every call; the outer .catch(()=>{}) hides it, so on native the push token is never sent to /api/register-push. Without this fix push registration is fully broken on device builds.",
+    "MEDIUM: /app/frontend/google-services.json is referenced by app.json but missing. Provide it before running EAS Android build.",
+    "LOW (carry-forward): migrate remaining shadow*/pointerEvents RN-web deprecations.",
+    "LOW (carry-forward): /app/frontend/app/(owner)/dashboard.tsx load() has try/finally with no catch — 401 bubbles as uncaught overlay if navigating to /dashboard directly with stale token.",
+    "LOW (carry-forward): server.py = 1116 lines; consider splitting into routers/models modules."
+  ],
+  "critical_code_review_comments": [
+    "CRITICAL (frontend): AuthContext.tsx references Platform and Notifications without importing them (lines 30, 32, 37). Function is async, so the resulting ReferenceError is swallowed by the .catch() attached at call sites — login and refresh still work on web, but push registration on native will NEVER execute. This silently breaks the entire iter6 push flow on real devices even though the code path 'looks correct'.",
+    "server.py /api/register-push originally raised HTTPException(500, 'EMERGENT_PUSH_KEY missing or invalid') on upstream 401. Spec explicitly required NOT to 500 with placeholder key. Fixed: now catches 401/403 and 5xx from upstream and returns {status:'queued'} instead. (server.py:1039-1058)",
+    "server.py WS endpoint /api/ws/orders originally called `await ws.close(code=4401)` before `await ws.accept()` — Starlette converts pre-accept close into an HTTP 403 handshake response, which the client library surfaces as InvalidStatus, NOT ConnectionClosed with code 4401. Fixed: accept first, then close(code=4401) so clients observe the documented close code. (server.py:1058-1074)",
+    "WSManager per-user dict correctly broadcasts to a list of connections per user_id. server.py POST /api/orders emits order_new to the owner user_id; POST /api/orders/{id}/status emits order_status to owner + customer_id + courier_id (if assigned); POST /api/orders/{id}/assign emits order_assigned to customer_id + courier_id. All verified by test_full_lifecycle_ws_events with 3 concurrent WS connections.",
+    "useOrderEvents hook (frontend) correctly derives ws:// URL from api.defaults.baseURL, encodes token as query param, and implements exponential backoff on close with a 15s ceiling. Also correctly returns cleanup that sets closedRef=true to prevent reconnect after unmount.",
+    "app/_layout.tsx correctly hoists setNotificationHandler (Platform !== 'web') and setNotificationChannelAsync (Platform === 'android') to MODULE SCOPE and gates them by platform. Inside useEffect the response-received listener + cold-start getLastNotificationResponseAsync are both guarded by `if (Platform.OS === 'web') return;` and cleanup calls listener.remove(). ✅",
+    "send_push helper is idempotent-safe ($idempotency_key), asyncio.create_task fire-and-forget, wrapped in try/except — will never block or crash primary operation. Backend logs show '[PUSH] non-2xx: 401' warnings during registration, which is expected with placeholder key."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (fixed /api/register-push 500 → returns {status:'queued'} on upstream auth/5xx; fixed WS to accept before close(4401))",
+    "/app/backend/tests/test_directdine_iter6.py (new — 6 tests for WS auth close code, WS broadcast on order_new, full lifecycle order_status + order_assigned, register-push non-fatal)",
+    "/app/test_reports/iteration_6.json (new)",
+    "/app/test_reports/pytest/pytest_iter6.xml (new)",
+    "/app/test_reports/pytest/pytest_results.xml (regenerated with 65 tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (65/65: 59 legacy regression + 6 new iter6)",
+    "frontend": "5/6 spec items verified. Verified live: (1) app loads on web without crash despite Platform/Notifications ReferenceError being silently swallowed, (2) owner dashboard WS receives order_new and updates pending count + list within <1s (well under the 6s poll), (3) useOrderEvents hook is imported and used in dashboard/tracking/deliveries per grep. NOT verified live (Expo Go / device required): actual push delivery, native permission dialog, and native token registration — those need a real device build. Also NOT explicitly re-tested in a live UI run for iter6: customer tracking delivered-banner speed and courier deliveries WS (backend WS test covers the broadcast side end-to-end, hook code is identical, so risk is low)."
+  },
+  "seed_data_creation": "Created several ephemeral orders (customer1 → Bella Napoli) via WS lifecycle test; all cleaned up via cancel or delivered. customer1 role remains 'customer'.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iter6 backend is solid (65/65). The ONE outstanding fix for main agent is trivial (2 import lines in AuthContext.tsx). After fix, push registration on native will actually fire. For iter7 verification: after AuthContext import fix, log the /register-push POST from the client and confirm backend receives it (with placeholder key it will still return {status:'queued'} — that's fine, indicates the network call was made). WS integration is already verified end-to-end on the owner dashboard; tracking/deliveries screens use the same hook so they should behave identically. To re-fire owner-dashboard WS test: login owner1, then curl POST /api/orders as customer1 — pending count updates within ~1s. Login testIDs: login-email-input, login-password-input, login-submit-button. Owner dashboard route: /dashboard. Courier deliveries: /deliveries. Customer tracking: /tracking/{id}.",
+  "rca_of_issue": "Two backend defects found and fixed in this iteration: (1) /api/register-push RCA: with EMERGENT_PUSH_KEY='placeholder', the httpx call to https://integrations.emergentagent.com/api/v1/push/users/register returned HTTP 401 (auth failure). The endpoint code explicitly did `if resp.status_code == 401: raise HTTPException(500, ...)` and then re-raised HTTPException in the outer catch, so the client saw a 500 with body {detail:'EMERGENT_PUSH_KEY missing or invalid'}. Spec required the endpoint to be graceful and return {status:'queued'}. Fix: catch 401/403 (auth) and 5xx (server) as recoverable, log warning, and return queued. Unit test test_register_push_no_500_with_placeholder_key now green. (2) WS 4401 RCA: FastAPI's WebSocket.close() when called before accept() falls back to sending an HTTP 403 handshake denial (Starlette WebSocketDenialResponse fallback), so the client library raises InvalidStatus(403) instead of the documented ConnectionClosed(4401). Fix: call `await ws.accept()` unconditionally first, then validate token and `await ws.close(code=4401)` on failure — this sends a normal WS close frame that the client library observes as ConnectionClosed with rcvd.code=4401. Both TestWSAuth.test_missing_token_closes_4401 and test_invalid_token_closes_4401 now green."
+}

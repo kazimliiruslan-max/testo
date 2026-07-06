@@ -26,6 +26,22 @@ interface AuthCtx {
 
 const Ctx = createContext<AuthCtx | undefined>(undefined);
 
+async function registerPushForUser(userId: string) {
+  if (Platform.OS === 'web') return;
+  try {
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status !== 'granted') return;
+    const tokenResp = await Notifications.getDevicePushTokenAsync();
+    await api.post('/register-push', {
+      user_id: userId,
+      platform: Platform.OS,
+      device_token: tokenResp.data,
+    });
+  } catch {
+    // non-fatal
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,6 +50,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await api.get('/auth/me');
       setUser(res.data);
+      // Fire-and-forget push registration on every app open when authed
+      registerPushForUser(res.data.id).catch(() => {});
     } catch {
       setUser(null);
     } finally {
@@ -49,6 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const res = await api.post('/auth/login', { email, password });
     await saveToken(res.data.access_token);
     setUser(res.data.user);
+    registerPushForUser(res.data.user.id).catch(() => {});
     return res.data.user;
   };
 
@@ -56,6 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const res = await api.post('/auth/register', payload);
     await saveToken(res.data.access_token);
     setUser(res.data.user);
+    registerPushForUser(res.data.user.id).catch(() => {});
     return res.data.user;
   };
 

@@ -8,6 +8,7 @@ import { api } from '@/src/api/client';
 import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
 import { openLocation } from '@/src/utils/maps';
+import { useOrderEvents } from '@/src/hooks/useOrderEvents';
 
 export default function OwnerOrders() {
   const { t } = useI18n();
@@ -75,6 +76,13 @@ export default function OwnerOrders() {
     const iv = setInterval(() => load(true), 6000);
     return () => clearInterval(iv);
   }, [load]));
+
+  // Real-time updates
+  useOrderEvents((msg) => {
+    if (msg?.type === 'order_new' || msg?.type === 'order_status') {
+      load(true);
+    }
+  }, true);
 
   const setStatus = async (oid: string, status: string) => {
     await api.post(`/orders/${oid}/status`, { status });

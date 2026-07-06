@@ -8,6 +8,7 @@ import { api } from '@/src/api/client';
 import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
 import OrderMap from '@/src/components/OrderMap';
+import { useOrderEvents } from '@/src/hooks/useOrderEvents';
 
 const STATUSES = ['pending', 'accepted', 'preparing', 'out_for_delivery', 'delivered'];
 
@@ -55,6 +56,13 @@ export default function TrackOrder() {
     const iv = setInterval(load, 8000);
     return () => clearInterval(iv);
   }, [load]);
+
+  // Real-time updates
+  useOrderEvents((msg) => {
+    if (msg?.order_id === id && (msg.type === 'order_status' || msg.type === 'order_assigned')) {
+      load();
+    }
+  }, !!id);
 
   if (loading || !order) {
     return <View style={styles.center}><ActivityIndicator color={theme.colors.brand} size="large" /></View>;

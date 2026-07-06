@@ -9,6 +9,7 @@ import { api } from '@/src/api/client';
 import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
 import { openDirections } from '@/src/utils/maps';
+import { useOrderEvents } from '@/src/hooks/useOrderEvents';
 
 type PermState = 'idle' | 'granted' | 'denied' | 'blocked';
 
@@ -30,6 +31,13 @@ export default function CourierDeliveries() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // Real-time updates
+  useOrderEvents((msg) => {
+    if (msg?.type === 'order_assigned' || msg?.type === 'order_status') {
+      load();
+    }
+  }, true);
 
   useEffect(() => {
     return () => { watcher.current?.remove(); };
