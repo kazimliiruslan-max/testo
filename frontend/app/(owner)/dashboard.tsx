@@ -7,6 +7,7 @@ import { useFocusEffect } from 'expo-router';
 import { api } from '@/src/api/client';
 import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
+import { openLocation } from '@/src/utils/maps';
 
 export default function OwnerOrders() {
   const { t } = useI18n();
@@ -16,8 +17,11 @@ export default function OwnerOrders() {
   const [refreshing, setRefreshing] = useState(false);
   const [assignFor, setAssignFor] = useState<string | null>(null);
   const [newOrderBanner, setNewOrderBanner] = useState<any>(null);
+  const [deliveredBanner, setDeliveredBanner] = useState<any>(null);
   const bannerAnim = useRef(new Animated.Value(-100)).current;
+  const deliveredAnim = useRef(new Animated.Value(-100)).current;
   const knownIds = useRef<Set<string>>(new Set());
+  const knownStatuses = useRef<Record<string, string>>({});
   const firstLoad = useRef(true);
 
   const load = useCallback(async (isPoll = false) => {
@@ -27,11 +31,17 @@ export default function OwnerOrders() {
 
       if (firstLoad.current) {
         knownIds.current = new Set(newOrders.map((n) => n.id));
+        newOrders.forEach((n) => { knownStatuses.current[n.id] = n.status; });
         firstLoad.current = false;
       } else {
         // Detect new pending orders
         const fresh = newOrders.find((n) => n.status === 'pending' && !knownIds.current.has(n.id));
-        newOrders.forEach((n) => knownIds.current.add(n.id));
+        // Detect just-delivered orders
+        const justDelivered = newOrders.find((n) =>
+          n.status === 'delivered' && knownStatuses.current[n.id] && knownStatuses.current[n.id] !== 'delivered'
+        );
+        newOrders.forEach((n) => { knownIds.current.add(n.id); knownStatuses.current[n.id] = n.status; });
+
         if (fresh) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
           setNewOrderBanner(fresh);
@@ -41,13 +51,22 @@ export default function OwnerOrders() {
             Animated.timing(bannerAnim, { toValue: -100, duration: 300, useNativeDriver: true }),
           ]).start(() => setNewOrderBanner(null));
         }
+        if (justDelivered) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          setDeliveredBanner(justDelivered);
+          Animated.sequence([
+            Animated.timing(deliveredAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
+            Animated.delay(3500),
+            Animated.timing(deliveredAnim, { toValue: -100, duration: 300, useNativeDriver: true }),
+          ]).start(() => setDeliveredBanner(null));
+        }
       }
       setOrders(newOrders);
       setCouriers(c.data);
     } finally {
       if (!isPoll) { setLoading(false); setRefreshing(false); }
     }
-  }, [bannerAnim]);
+  }, [bannerAnim, deliveredAnim]);
 
   useFocusEffect(useCallback(() => {
     load();
@@ -77,6 +96,11 @@ export default function OwnerOrders() {
       <Animated.View style={[styles.banner, { transform: [{ translateY: bannerAnim }] }]} pointerEvents="none">
         <Ionicons name="notifications" size={20} color="#fff" />
         <Text style={styles.bannerTxt}>{t('newOrder')} · {newOrderBanner?.customer_name} · ₺{newOrderBanner?.total?.toFixed(2)}</Text>
+      </Animated.View>
+
+      <Animated.View style={[styles.banner, styles.deliveredBanner, { transform: [{ translateY: deliveredAnim }] }]} pointerEvents="none">
+        <Ionicons name="checkmark-done-circle" size={20} color="#fff" />
+        <Text style={styles.bannerTxt}>{t('deliveredBannerOwner')} · {deliveredBanner?.customer_name}</Text>
       </Animated.View>
 
       <View style={styles.header}>
@@ -121,7 +145,18 @@ export default function OwnerOrders() {
               </View>
               <Text style={styles.statusTag}>{t(`status_${item.status}` as any)}</Text>
             </View>
-            <Text style={styles.addr}><Ionicons name="location-outline" size={12} /> {item.delivery_address}</Text>
+            <Pressable
+              testID={`owner-open-map-${item.id}`}
+              onPress={() => openLocation(item.delivery_lat, item.delivery_lng, item.customer_name)}
+              style={styles.addrRow}
+            >
+              <Ionicons name="location-outline" size={14} color={theme.colors.brandDark} />
+              <Text style={styles.addr} numberOfLines={2}>{item.delivery_address}</Text>
+              <View style={styles.openMapBtn}>
+                <Ionicons name="map" size={12} color="#fff" />
+                <Text style={styles.openMapTxt}>Map</Text>
+              </View>
+            </Pressable>
             {item.customer_phone && <Text style={styles.phone}>📞 {item.customer_phone}</Text>}
             {item.courier_name && <Text style={styles.courierTag}>🛵 {item.courier_name}</Text>}
             <View style={styles.actions}>
@@ -191,7 +226,10 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: theme.font.lg, fontWeight: '700', color: theme.colors.onSurface },
   cardSub: { color: theme.colors.onSurfaceSecondary, marginTop: 2 },
   statusTag: { color: theme.colors.brandDark, fontWeight: '700', fontSize: theme.font.sm },
-  addr: { color: theme.colors.onSurfaceSecondary, marginTop: theme.spacing.xs, fontSize: theme.font.sm },
+  addr: { flex: 1, color: theme.colors.onSurfaceSecondary, fontSize: theme.font.sm },
+  addrRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: theme.spacing.xs, paddingVertical: 4 },
+  openMapBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: theme.colors.brand, paddingHorizontal: 8, paddingVertical: 3, borderRadius: theme.radius.pill },
+  openMapTxt: { color: '#fff', fontWeight: '700', fontSize: 11 },
   phone: { color: theme.colors.onSurfaceSecondary, marginTop: 2, fontSize: theme.font.sm },
   courierTag: { color: theme.colors.onSurface, marginTop: 4, fontSize: theme.font.sm, fontWeight: '600' },
   actions: { flexDirection: 'row', gap: theme.spacing.sm, marginTop: theme.spacing.md },

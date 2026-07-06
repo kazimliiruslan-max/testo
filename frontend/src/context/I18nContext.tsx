@@ -145,6 +145,12 @@ const strings = {
     emailSent: 'Email sent',
     emailNotSent: 'Email not sent — share the link manually',
     emailSandboxNote: 'Sandbox mode: emails only reach your own address until you verify a domain in Resend.',
+    navigate: 'Navigate',
+    markDelivered: 'Delivered',
+    deliveredBannerCustomer: 'Your order was delivered!',
+    deliveredBannerOwner: 'Order delivered',
+    enjoyYourMeal: 'Enjoy your meal 🍽️',
+    openInMaps: 'Open in Maps',
   },
   tr: {
     welcome: 'DirectDine\'e Hoş Geldiniz',
@@ -277,6 +283,12 @@ const strings = {
     emailSent: 'E-posta gönderildi',
     emailNotSent: 'E-posta gönderilemedi — bağlantıyı elle paylaşın',
     emailSandboxNote: 'Sandbox modu: Resend\'de bir alan adı doğrulayana kadar e-postalar yalnızca kendi adresinize ulaşır.',
+    navigate: 'Yol tarifi',
+    markDelivered: 'Teslim edildi',
+    deliveredBannerCustomer: 'Siparişiniz teslim edildi!',
+    deliveredBannerOwner: 'Sipariş teslim edildi',
+    enjoyYourMeal: 'Afiyet olsun 🍽️',
+    openInMaps: 'Haritada aç',
   },
 };
 

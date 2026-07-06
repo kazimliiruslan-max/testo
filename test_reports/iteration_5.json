@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 5 — all spec items PASS. Backend: 59/59 pytest (55 legacy + 4 new iter5 covering lat/lng preservation on /api/orders + /api/orders/guest, order schema no-drift, and full lifecycle pending→accepted→preparing→assign(auto out_for_delivery)→delivered). Frontend (390x844 mobile): (1) owner-open-map-{id} pill visible on each order card with delivery_address text; tapping opens https://www.google.com/maps/search/?api=1&query=41.0369,28.985 (correct lat/lng embedded). (2) Owner delivered banner: 'Order delivered · {customer}' animated in on dashboard within ~7s of status→delivered transition (only for actual transitions, not first poll baseline). (3) courier-navigate-{id} button present on non-delivered/cancelled assigned orders; opens https://www.google.com/maps/dir/?api=1&destination=41.0369,28.985&travelmode=driving. (4) Courier out_for_delivery card renders cardActive left border. (5) Customer tracking screen loads at /tracking/{id}, out_for_delivery timeline correct; delivered-status API 200 while mounted, delivered banner text present after transition. Console warnings persist (shadow*/pointerEvents deprecations) — non-blocking, carry-over from prior iterations.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "Global styles", "issue": "Console warnings persist across screens: 'shadow*' style props deprecated (use boxShadow) and 'props.pointerEvents' deprecated (use style.pointerEvents). Non-blocking; carry-over from earlier iterations. Reference: multiple components."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_directdine_iter5.py",
+    "/app/backend/tests/test_directdine_iter4.py",
+    "/app/backend/tests/test_directdine_api.py",
+    "/app/backend/tests/test_directdine_new_features.py",
+    "/app/test_reports/pytest/pytest_iter5.xml"
+  ],
+  "action_items": [
+    "LOW (carry-forward): migrate remaining shadow*/pointerEvents RN-web deprecations.",
+    "LOW: /app/frontend/app/(owner)/dashboard.tsx load() has a try/finally with no catch — if /api/orders returns 401 (e.g., stale token / logged-out state), the promise rejection bubbles up as a red 'Uncaught Error: Request failed with status code 401' overlay on web. Repro: navigate directly to /dashboard without valid token. In-app flow via login redirect is unaffected, but adding a catch that logs+resets state (or redirects to /login) would harden this.",
+    "LOW (carry-forward): server.py = 936 lines; consider splitting into routers/models modules."
+  ],
+  "critical_code_review_comments": [
+    "server.py /orders and /orders/guest correctly persist delivery_lat/delivery_lng and echo them on GET /orders (owner scope). Confirmed via test_customer_post_order_persists_lat_lng and test_guest_post_order_persists_lat_lng.",
+    "server.py /orders/{id}/assign correctly sets courier_id AND flips status to 'out_for_delivery' atomically (confirmed by TestFullLifecycle).",
+    "Order model has no schema drift: id, restaurant_id, status, items, total, delivery_address, delivery_lat, delivery_lng, created_at all present and typed correctly.",
+    "/app/frontend/src/utils/maps.ts openDirections/openLocation correctly branch by Platform.OS, with proper Apple/Google/Android intent URLs and web fallback. Web branch verified against live buttons.",
+    "dashboard.tsx correctly detects delivered transitions via knownStatuses ref (skips first-load baseline). Banner uses Animated.sequence with 300/3500/300 ms timing on brandDark background.",
+    "deliveries.tsx renders courier-navigate-{id} between details and action row for non-delivered/cancelled orders when delivery_lat is set; cardActive left-border applied when status='out_for_delivery' (verified visually).",
+    "tracking/[id].tsx also uses prev-status guard so banner only fires on actual transition to delivered, not on initial mount of already-delivered order."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_directdine_iter5.py (new)",
+    "/app/test_reports/iteration_5.json (new)",
+    "/app/test_reports/pytest/pytest_iter5.xml (new)"
+  ],
+  "success_rate": {"backend": "100% (59/59)", "frontend": "5/5 iter5 spec items verified live (owner map link + owner delivered banner + courier navigate + courier cardActive + customer tracking delivered flow). Regression items (featured carousel, guest checkout with LocationPicker, address book, order cancel, courier invite, EN/TR i18n) not re-tested in this run — main agent may self-verify since they were green in iter4."},
+  "seed_data_creation": "Created several ephemeral orders (customer1 → Bella Napoli) then transitioned them through the full lifecycle to delivered/cancelled. No persistent data drift; customer1 role still 'customer' post-run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "customer1 role remains 'customer' post-run. To re-fire the delivered banner during iter6 UI tests: login as owner1 (dashboard) or customer1 (tracking screen), then POST /api/orders/{id}/status {status:'delivered'} using courier1 token while the screen is mounted; banner slides in within one poll cycle (~7s owner, ~8s customer). Login submit testID is 'login-submit-button'. Owner dashboard reachable at /dashboard, courier deliveries at /deliveries, tracking at /tracking/{id}.",
+  "rca_of_issue": "N/A — all iteration 5 features (owner map link, owner delivered banner, courier navigate button + cardActive, customer delivered banner code path) pass. Only carry-forward is the shadow*/pointerEvents deprecation warnings and the un-caught 401 on /dashboard if hit directly without auth (edge case, not user-reachable via normal login redirect)."
+}

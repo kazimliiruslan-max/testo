@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView } from 'react-native';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { api } from '@/src/api/client';
 import { useI18n } from '@/src/context/I18nContext';
@@ -18,10 +19,23 @@ export default function TrackOrder() {
   const [restaurant, setRestaurant] = useState<any>(null);
   const [courierLoc, setCourierLoc] = useState<{ lat?: number; lng?: number } | null>(null);
   const [loading, setLoading] = useState(true);
+  const bannerAnim = useRef(new Animated.Value(-120)).current;
+  const prevStatus = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const o = await api.get(`/orders/${id}`);
+      const prev = prevStatus.current;
+      const next = o.data.status;
+      if (prev && prev !== 'delivered' && next === 'delivered') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        Animated.sequence([
+          Animated.timing(bannerAnim, { toValue: 0, duration: 350, useNativeDriver: true }),
+          Animated.delay(4500),
+          Animated.timing(bannerAnim, { toValue: -120, duration: 350, useNativeDriver: true }),
+        ]).start();
+      }
+      prevStatus.current = next;
       setOrder(o.data);
       const r = await api.get(`/restaurants/${o.data.restaurant_id}`);
       setRestaurant(r.data);
@@ -34,7 +48,7 @@ export default function TrackOrder() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, bannerAnim]);
 
   useEffect(() => {
     load();
@@ -50,6 +64,14 @@ export default function TrackOrder() {
 
   return (
     <View style={styles.container}>
+      <Animated.View style={[styles.dBanner, { transform: [{ translateY: bannerAnim }] }]} pointerEvents="none">
+        <Ionicons name="checkmark-done-circle" size={28} color="#fff" />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.dBannerTitle}>{t('deliveredBannerCustomer')}</Text>
+          <Text style={styles.dBannerSub}>{t('enjoyYourMeal')}</Text>
+        </View>
+      </Animated.View>
+
       <View style={styles.mapWrap}>
         <OrderMap
           courierLat={courierLoc?.lat}
@@ -176,4 +198,7 @@ const styles = StyleSheet.create({
   codLabel: { marginTop: theme.spacing.md, color: theme.colors.success, fontWeight: '700', textAlign: 'center' },
   tCancelBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: theme.radius.pill, borderWidth: 1, borderColor: theme.colors.error, marginBottom: theme.spacing.lg },
   tCancelTxt: { color: theme.colors.error, fontWeight: '700', fontSize: theme.font.base },
+  dBanner: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: theme.colors.brandDark, paddingTop: 54, paddingBottom: theme.spacing.md, paddingHorizontal: theme.spacing.lg, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, zIndex: 200 },
+  dBannerTitle: { color: '#fff', fontWeight: '800', fontSize: theme.font.lg },
+  dBannerSub: { color: '#fff', fontSize: theme.font.sm, opacity: 0.9 },
 });

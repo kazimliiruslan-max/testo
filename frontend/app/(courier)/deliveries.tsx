@@ -8,6 +8,7 @@ import { useFocusEffect } from 'expo-router';
 import { api } from '@/src/api/client';
 import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
+import { openDirections } from '@/src/utils/maps';
 
 type PermState = 'idle' | 'granted' | 'denied' | 'blocked';
 
@@ -146,22 +147,41 @@ export default function CourierDeliveries() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
           ItemSeparatorComponent={() => <View style={{ height: theme.spacing.md }} />}
           renderItem={({ item }) => (
-            <View style={styles.card}>
+            <View style={[styles.card, item.status === 'out_for_delivery' && styles.cardActive]}>
               <View style={styles.top}>
                 <Text style={styles.rest}>{item.restaurant_name}</Text>
                 <Text style={styles.statusTxt}>{t(`status_${item.status}` as any)}</Text>
               </View>
-              <Text style={styles.cust}>👤 {item.customer_name}</Text>
-              <Text style={styles.addr}>📍 {item.delivery_address}</Text>
+              <Text style={styles.cust}>👤 {item.customer_name}{item.customer_phone ? ` · ${item.customer_phone}` : ''}</Text>
+              <Text style={styles.addr} numberOfLines={2}>📍 {item.delivery_address}</Text>
               <Text style={styles.total}>₺{item.total.toFixed(2)} · Cash</Text>
+
+              {item.status !== 'delivered' && item.status !== 'cancelled' && item.delivery_lat != null && (
+                <Pressable
+                  testID={`courier-navigate-${item.id}`}
+                  onPress={() => openDirections(item.delivery_lat, item.delivery_lng, item.customer_name)}
+                  style={styles.navBtn}
+                >
+                  <Ionicons name="navigate" size={18} color="#fff" />
+                  <Text style={styles.navTxt}>{t('navigate')}</Text>
+                </Pressable>
+              )}
+
               <View style={styles.actions}>
-                {item.status !== 'delivered' && (
+                {item.status !== 'delivered' && item.status !== 'cancelled' && (
                   <>
-                    <Pressable testID={`courier-otw-${item.id}`} onPress={() => setStatus(item.id, 'out_for_delivery')} style={[styles.actBtn, item.status === 'out_for_delivery' && styles.actBtnActive]}>
-                      <Text style={[styles.actTxt, item.status === 'out_for_delivery' && styles.actTxtActive]}>{t('onTheWay')}</Text>
-                    </Pressable>
-                    <Pressable testID={`courier-delivered-${item.id}`} onPress={() => setStatus(item.id, 'delivered')} style={[styles.actBtn, { backgroundColor: theme.colors.brand }]}>
-                      <Text style={[styles.actTxt, { color: '#fff' }]}>{t('delivered')}</Text>
+                    {item.status !== 'out_for_delivery' && (
+                      <Pressable testID={`courier-otw-${item.id}`} onPress={() => setStatus(item.id, 'out_for_delivery')} style={styles.actBtn}>
+                        <Text style={styles.actTxt}>{t('onTheWay')}</Text>
+                      </Pressable>
+                    )}
+                    <Pressable
+                      testID={`courier-delivered-${item.id}`}
+                      onPress={() => setStatus(item.id, 'delivered')}
+                      style={[styles.actBtn, { backgroundColor: theme.colors.brand, flex: item.status === 'out_for_delivery' ? 1 : undefined }]}
+                    >
+                      <Ionicons name="checkmark-circle" size={16} color="#fff" />
+                      <Text style={[styles.actTxt, { color: '#fff', marginLeft: 4 }]}>{t('markDelivered')}</Text>
                     </Pressable>
                   </>
                 )}
@@ -192,6 +212,9 @@ const styles = StyleSheet.create({
   permBtnTxt: { color: '#fff', fontWeight: '700' },
   permWarn: { color: theme.colors.warning, marginHorizontal: theme.spacing.lg, textAlign: 'center', marginBottom: theme.spacing.md, fontSize: theme.font.sm },
   card: { padding: theme.spacing.lg, backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md },
+  cardActive: { backgroundColor: theme.colors.brandTertiary, borderLeftWidth: 4, borderLeftColor: theme.colors.brand },
+  navBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: theme.colors.brandDark, paddingVertical: 12, borderRadius: theme.radius.pill, marginTop: theme.spacing.md },
+  navTxt: { color: '#fff', fontWeight: '800', fontSize: theme.font.base },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   rest: { fontSize: theme.font.lg, fontWeight: '700', color: theme.colors.onSurface },
   statusTxt: { color: theme.colors.brandDark, fontWeight: '700', fontSize: theme.font.sm },
