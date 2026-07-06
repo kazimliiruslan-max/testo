@@ -9,6 +9,7 @@ import uuid
 import secrets
 import jwt
 import bcrypt
+import resend
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Literal
@@ -24,6 +25,11 @@ db = client[os.environ['DB_NAME']]
 JWT_SECRET = os.environ.get('JWT_SECRET', 'directdine-dev-secret-change-in-prod-8f7d2a')
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRE_HOURS = 24 * 7
+
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
+RESEND_FROM = os.environ.get('RESEND_FROM', 'DirectDine <onboarding@resend.dev>')
+if RESEND_API_KEY:
+    resend.api_key = RESEND_API_KEY
 
 app = FastAPI(title="DirectDine API")
 api_router = APIRouter(prefix="/api")
@@ -153,6 +159,7 @@ class CourierInviteResponse(BaseModel):
     email: EmailStr
     token: str
     restaurant_name: str
+    email_sent: bool = False
 
 class GuestOrderCreate(BaseModel):
     name: str
@@ -209,6 +216,25 @@ class OrderStatusUpdate(BaseModel):
 
 class AssignCourierInput(BaseModel):
     courier_id: str
+
+
+# ---------- Address Book ----------
+class AddressCreate(BaseModel):
+    label: str  # "Home" / "Work" / "Other" or custom
+    address: str
+    extra: Optional[str] = ""
+    lat: float
+    lng: float
+
+class Address(BaseModel):
+    id: str
+    user_id: str
+    label: str
+    address: str
+    extra: str = ""
+    lat: float
+    lng: float
+    created_at: str
 
 
 # ---------- Helpers ----------
@@ -434,6 +460,49 @@ def _build_invite_link(token: str) -> str:
     base = os.environ.get('PUBLIC_APP_URL', 'https://directdine.app')
     return f"{base}/invite/{token}"
 
+def _send_invite_email(to_email: str, courier_name: str, restaurant_name: str, invite_link: str) -> bool:
+    """Send courier invite email via Resend. Returns True on success. Non-fatal on failure."""
+    if not RESEND_API_KEY:
+        logger.info(f"[EMAIL SKIP] No RESEND_API_KEY set. Link for {to_email}: {invite_link}")
+        return False
+    try:
+        html = f"""
+        <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a1a1a">
+          <div style="text-align:center;padding:24px 0">
+            <div style="display:inline-block;background:#2ECC71;color:#fff;font-weight:800;padding:12px 20px;border-radius:8px;font-size:20px">🚴 DirectDine</div>
+          </div>
+          <h1 style="font-size:22px;margin:16px 0">Hi {courier_name}, you're invited!</h1>
+          <p style="font-size:16px;color:#4a4a4a;line-height:1.5">
+            <strong>{restaurant_name}</strong> has invited you to join DirectDine as their courier.
+            Tap the button below to set your password and open your delivery dashboard.
+          </p>
+          <div style="text-align:center;margin:32px 0">
+            <a href="{invite_link}" style="background:#2ECC71;color:#fff;text-decoration:none;padding:14px 28px;border-radius:999px;font-weight:700;display:inline-block;font-size:16px">
+              Activate my account
+            </a>
+          </div>
+          <p style="font-size:13px;color:#7a7a7a">
+            Or copy this link into your browser:<br/>
+            <a href="{invite_link}" style="color:#1E9E5C">{invite_link}</a>
+          </p>
+          <hr style="border:none;border-top:1px solid #eee;margin:32px 0"/>
+          <p style="font-size:12px;color:#a0a0a0;text-align:center">
+            DirectDine — 0% commission food delivery
+          </p>
+        </div>
+        """
+        resend.Emails.send({
+            "from": RESEND_FROM,
+            "to": [to_email],
+            "subject": f"You're invited to deliver for {restaurant_name}",
+            "html": html,
+        })
+        return True
+    except Exception as e:
+        logger.error(f"[EMAIL] Resend send failed for {to_email}: {e}")
+        return False
+
+
 @api_router.post("/couriers/invite", response_model=CourierInviteResponse)
 async def invite_courier(data: CourierInvite, user: dict = Depends(require_roles('restaurant_owner'))):
     existing = await db.users.find_one({'email': data.email.lower()})
@@ -452,12 +521,17 @@ async def invite_courier(data: CourierInvite, user: dict = Depends(require_roles
     }
     await db.courier_invites.insert_one(invite_doc)
     rest = await db.restaurants.find_one({'id': user['restaurant_id']}, {'_id': 0})
-    logger.info(f"[EMAIL MOCK] Invite for {data.email}: {_build_invite_link(token)}")
+    restaurant_name = rest['name'] if rest else ''
+    invite_link = _build_invite_link(token)
+    email_sent = _send_invite_email(data.email, data.name, restaurant_name, invite_link)
+    if email_sent:
+        logger.info(f"[EMAIL SENT] Invite for {data.email} via Resend")
     return CourierInviteResponse(
-        invite_link=_build_invite_link(token),
+        invite_link=invite_link,
         email=data.email,
         token=token,
-        restaurant_name=rest['name'] if rest else '',
+        restaurant_name=restaurant_name,
+        email_sent=email_sent,
     )
 
 @api_router.get("/couriers/invite/{token}", response_model=CourierInviteInfo)
@@ -651,6 +725,49 @@ async def update_order_status(oid: str, data: OrderStatusUpdate, user: dict = De
     await db.orders.update_one({'id': oid}, {'$set': {'status': data.status, 'updated_at': now_iso()}})
     doc = await db.orders.find_one({'id': oid}, {'_id': 0})
     return Order(**doc)
+
+
+@api_router.post("/orders/{oid}/cancel", response_model=Order)
+async def cancel_order(oid: str, user: dict = Depends(require_roles('customer'))):
+    order = await db.orders.find_one({'id': oid}, {'_id': 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order['customer_id'] != user['id']:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if order['status'] not in ('pending', 'accepted'):
+        raise HTTPException(status_code=400, detail="Order can no longer be cancelled")
+    await db.orders.update_one({'id': oid}, {'$set': {'status': 'cancelled', 'updated_at': now_iso()}})
+    doc = await db.orders.find_one({'id': oid}, {'_id': 0})
+    return Order(**doc)
+
+
+# ---------- Address Book ----------
+@api_router.get("/addresses", response_model=List[Address])
+async def list_addresses(user: dict = Depends(require_roles('customer'))):
+    docs = await db.addresses.find({'user_id': user['id']}, {'_id': 0}).sort('created_at', -1).to_list(500)
+    return [Address(**d) for d in docs]
+
+@api_router.post("/addresses", response_model=Address)
+async def create_address(data: AddressCreate, user: dict = Depends(require_roles('customer'))):
+    doc = {
+        'id': str(uuid.uuid4()),
+        'user_id': user['id'],
+        'label': data.label.strip() or 'Other',
+        'address': data.address,
+        'extra': data.extra or '',
+        'lat': data.lat,
+        'lng': data.lng,
+        'created_at': now_iso(),
+    }
+    await db.addresses.insert_one(doc)
+    return Address(**doc)
+
+@api_router.delete("/addresses/{aid}")
+async def delete_address(aid: str, user: dict = Depends(require_roles('customer'))):
+    res = await db.addresses.delete_one({'id': aid, 'user_id': user['id']})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Address not found")
+    return {'ok': True}
 
 
 # ---------- Seeding ----------

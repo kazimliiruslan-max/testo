@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ScrollView, TextInput,
   KeyboardAvoidingView, Platform, ActivityIndicator,
@@ -14,6 +14,10 @@ import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
 import LocationPicker, { PickedLocation } from '@/src/components/LocationPicker';
 
+interface SavedAddress {
+  id: string; label: string; address: string; extra: string; lat: number; lng: number;
+}
+
 export default function Cart() {
   const { user, refresh } = useAuth();
   const { items, total, restaurantId, restaurantName, add, remove, clear } = useCart();
@@ -22,6 +26,8 @@ export default function Cart() {
   const [pickedLoc, setPickedLoc] = useState<PickedLocation | null>(null);
   const [addressExtra, setAddressExtra] = useState('');
   const [notes, setNotes] = useState('');
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [saveLabel, setSaveLabel] = useState<string | null>(null); // null means don't save
   // Guest fields
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
@@ -33,6 +39,19 @@ export default function Cart() {
   const isGuest = !user;
   const fullAddress = pickedLoc ? `${pickedLoc.address}${addressExtra ? ` — ${addressExtra}` : ''}` : '';
   const canPlace = !!pickedLoc && (!isGuest || (name && email && phone && password));
+
+  useEffect(() => {
+    if (user?.role === 'customer') {
+      api.get('/addresses').then((r) => setSavedAddresses(r.data)).catch(() => {});
+    } else {
+      setSavedAddresses([]);
+    }
+  }, [user]);
+
+  const applySaved = (a: SavedAddress) => {
+    setPickedLoc({ lat: a.lat, lng: a.lng, address: a.address });
+    setAddressExtra(a.extra || '');
+  };
 
   const onPlace = async () => {
     if (!restaurantId || items.length === 0 || !pickedLoc) return;
@@ -72,6 +91,18 @@ export default function Cart() {
           notes,
         });
         orderId = res.data.id;
+      }
+      // Save address to book if user opted in (only for authed customers)
+      if (saveLabel && (user?.role === 'customer' || isGuest)) {
+        try {
+          await api.post('/addresses', {
+            label: saveLabel,
+            address: pickedLoc.address,
+            extra: addressExtra,
+            lat: pickedLoc.lat,
+            lng: pickedLoc.lng,
+          });
+        } catch {}
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       clear();
@@ -167,6 +198,30 @@ export default function Cart() {
               )}
 
               <Text style={styles.sectionHead}>{t('deliveryAddress')}</Text>
+              {savedAddresses.length > 0 && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.savedRow}
+                  style={{ marginBottom: theme.spacing.sm }}
+                >
+                  {savedAddresses.map((a) => (
+                    <Pressable
+                      key={a.id}
+                      testID={`saved-address-${a.id}`}
+                      onPress={() => applySaved(a)}
+                      style={styles.savedChip}
+                    >
+                      <Ionicons
+                        name={a.label === 'Home' ? 'home' : a.label === 'Work' ? 'briefcase' : 'location'}
+                        size={14}
+                        color={theme.colors.brandDark}
+                      />
+                      <Text style={styles.savedChipTxt}>{a.label}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              )}
               <LocationPicker
                 testID="location-picker"
                 value={pickedLoc}
@@ -181,6 +236,27 @@ export default function Cart() {
                 onChangeText={setAddressExtra}
                 multiline
               />
+
+              {pickedLoc && (
+                <View style={styles.saveRow}>
+                  <Text style={styles.saveLbl}>{t('saveAddress')}?</Text>
+                  <View style={styles.labelPicker}>
+                    {(['Home', 'Work', 'Other'] as const).map((l) => (
+                      <Pressable
+                        key={l}
+                        testID={`save-label-${l}`}
+                        onPress={() => setSaveLabel(saveLabel === l ? null : l)}
+                        style={[styles.labelChip, saveLabel === l && styles.labelChipActive]}
+                      >
+                        <Text style={[styles.labelChipTxt, saveLabel === l && styles.labelChipTxtActive]}>
+                          {l === 'Home' ? t('labelHome') : l === 'Work' ? t('labelWork') : t('labelOther')}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              )}
+
               <Text style={styles.sectionHead}>{t('notes')}</Text>
               <TextInput
                 testID="cart-notes-input"
@@ -249,4 +325,14 @@ const styles = StyleSheet.create({
   orderBtn: { backgroundColor: theme.colors.brand, borderRadius: theme.radius.pill, height: 54, alignItems: 'center', justifyContent: 'center' },
   orderTxt: { color: '#fff', fontSize: theme.font.lg, fontWeight: '700' },
   err: { color: theme.colors.error, marginTop: theme.spacing.md, textAlign: 'center' },
+  savedRow: { gap: theme.spacing.sm, paddingVertical: 2 },
+  savedChip: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 4, height: 34, paddingHorizontal: theme.spacing.md, borderRadius: theme.radius.pill, backgroundColor: theme.colors.brandTertiary },
+  savedChipTxt: { color: theme.colors.brandDark, fontWeight: '700', fontSize: theme.font.sm },
+  saveRow: { marginTop: theme.spacing.md, padding: theme.spacing.md, backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md },
+  saveLbl: { color: theme.colors.onSurfaceSecondary, marginBottom: theme.spacing.sm, fontSize: theme.font.sm, fontWeight: '600' },
+  labelPicker: { flexDirection: 'row', gap: theme.spacing.sm },
+  labelChip: { flex: 1, paddingVertical: 8, borderRadius: theme.radius.pill, borderWidth: 1, borderColor: theme.colors.border, alignItems: 'center', backgroundColor: theme.colors.surface },
+  labelChipActive: { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
+  labelChipTxt: { color: theme.colors.onSurface, fontWeight: '600' },
+  labelChipTxtActive: { color: '#fff' },
 });

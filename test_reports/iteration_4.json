@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 4 — all spec items PASS. Backend: 55/55 pytest (36 legacy + 19 new iter4). Address book, order cancel, and Resend email_sent flag all correct. Frontend (mobile 390x844): Profile 'Saved addresses' renders + delete-addr-{id} removes rows (3→2 after tap). Orders list shows cancel-order-{id} on pending orders → confirmation modal → confirm-cancel-btn cancels order (status flips to Cancelled on refresh). Owner invite modal renders amber 'Email not sent — share the link manually' pill for sandbox-rejected recipients + invite-link-value + copy-link. Regression of legacy 36 tests still green.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "Global styles", "issue": "Console warnings persist: 'shadow*' style props deprecated (use boxShadow) and 'props.pointerEvents' deprecated. Non-blocking; carried from prior iterations."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_directdine_iter4.py",
+    "/app/backend/tests/test_directdine_api.py",
+    "/app/backend/tests/test_directdine_new_features.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/pytest/pytest_iter4.xml"
+  ],
+  "action_items": [
+    "LOW: Cart saved-address chips (`saved-address-{id}`) and save-label chips (`save-label-Home/Work/Other`) are gated behind `items.length > 0` — code path is correct but only renders when cart has items. UI verification via Playwright wasn't possible (menu-add testID pattern differs; testing agent couldn't populate cart in this run). Recommend main agent self-test by adding an item then observing chips on /cart.",
+    "LOW (carry-forward): migrate deprecated shadow* and pointerEvents RN-web style props.",
+    "LOW (carry-forward): server.py = 935 lines; consider splitting into routers/models modules.",
+    "LOW: test_directdine_new_features.py's switch-to-owner test still leaves customer1 permanently promoted; iter4 fixture asserts on role and requires DB reset before rerun. Consider ephemeral TEST_ user."
+  ],
+  "critical_code_review_comments": [
+    "server.py cancel endpoint (lines 730-741) correctly gates by customer_id ownership + status ∈ {pending, accepted}, returns 400/403/404 with proper detail messages.",
+    "server.py address book endpoints (lines 745-770) all gated by require_roles('customer') — owner/courier receive 403, guest 401. Delete is scoped by user_id so cross-user delete returns 404 (safe).",
+    "server.py invite endpoint (lines 506-534) wraps Resend call in try/except and always returns 200 with email_sent boolean — never 500s on sandbox rejection.",
+    "cart.tsx correctly composes fullAddress with em-dash, applies saved-address chip via applySaved() setting pickedLoc + addressExtra, and posts /api/addresses after order placement when saveLabel is set.",
+    "orders.tsx cancel button gated by `pending || accepted`; confirmation modal + optimistic reload works.",
+    "tracking/[id].tsx exposes tracking-cancel-btn only for pending/accepted; taps hit /api/orders/{id}/cancel and reload timeline.",
+    "couriers.tsx invite result modal switches between green 'emailSent' pill and amber 'emailNotSent' pill based on backend flag — verified live."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_directdine_iter4.py (new)",
+    "/app/test_reports/iteration_4.json (new)",
+    "/app/test_reports/pytest/pytest_results.xml (regenerated)",
+    "/app/test_reports/pytest/pytest_iter4.xml (new)"
+  ],
+  "success_rate": {"backend": "100% (55/55)", "frontend": "9/11 spec items verified live; 2 items (cart saved-address chips & save-label chips) verified via code review only because Playwright couldn't populate cart"},
+  "seed_data_creation": "Reset customer1 role to 'customer' in mongo before + between test runs. Deleted lingering TEST_-prefixed addresses. Ephemeral TEST_ users/addresses/orders created and cleaned up where possible.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Reset customer1 role before running pytest: mongosh test_database --eval 'db.users.updateOne({email:\"customer1@directdine.com\"},{$set:{role:\"customer\"},$unset:{restaurant_id:\"\"}})'. For UI testing of cart chips: log in as customer1 → home → tap a restaurant → tap a menu add button (testID pattern to be confirmed from that screen) → cart. The saved-address chips + save-label chips only render when items.length > 0.",
+  "rca_of_issue": "N/A — all backend & directly-observable frontend flows pass. Only limitation is Playwright-based UI verification of cart chips being gated behind cart having items (not a product bug)."
+}

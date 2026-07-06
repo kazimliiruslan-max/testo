@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,10 @@ import { useAuth } from '@/src/context/AuthContext';
 import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
 
+interface SavedAddress {
+  id: string; label: string; address: string; extra: string; lat: number; lng: number;
+}
+
 export default function CustomerProfile() {
   const { user, logout, refresh } = useAuth();
   const { t, lang, setLang } = useI18n();
@@ -16,6 +20,20 @@ export default function CustomerProfile() {
   const [restName, setRestName] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [addresses, setAddresses] = useState<SavedAddress[]>([]);
+
+  useEffect(() => {
+    if (user?.role === 'customer') {
+      api.get('/addresses').then((r) => setAddresses(r.data)).catch(() => {});
+    } else {
+      setAddresses([]);
+    }
+  }, [user]);
+
+  const deleteAddress = async (id: string) => {
+    await api.delete(`/addresses/${id}`);
+    setAddresses((a) => a.filter((x) => x.id !== id));
+  };
 
   const onLogout = async () => {
     await logout();
@@ -116,6 +134,43 @@ export default function CustomerProfile() {
           </Pressable>
         </View>
 
+        {user?.role === 'customer' && (
+          <>
+            <Text style={styles.sectionLabel}>{t('savedAddresses')}</Text>
+            {addresses.length === 0 ? (
+              <View style={styles.emptyAddr}>
+                <Ionicons name="location-outline" size={22} color={theme.colors.onSurfaceTertiary} />
+                <Text style={styles.emptyAddrTxt}>{t('noSavedAddresses')}</Text>
+              </View>
+            ) : (
+              addresses.map((a) => (
+                <View key={a.id} style={styles.addrRow} testID={`addr-row-${a.id}`}>
+                  <View style={styles.addrIcon}>
+                    <Ionicons
+                      name={a.label === 'Home' ? 'home' : a.label === 'Work' ? 'briefcase' : 'location'}
+                      size={18}
+                      color={theme.colors.brandDark}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.addrLabel}>{a.label}</Text>
+                    <Text style={styles.addrLine} numberOfLines={2}>
+                      {a.address}{a.extra ? ` — ${a.extra}` : ''}
+                    </Text>
+                  </View>
+                  <Pressable
+                    testID={`delete-addr-${a.id}`}
+                    onPress={() => deleteAddress(a.id)}
+                    style={styles.delBtn}
+                  >
+                    <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
+                  </Pressable>
+                </View>
+              ))
+            )}
+          </>
+        )}
+
         {user && (
           <Pressable testID="logout-button" onPress={onLogout} style={styles.logoutBtn}>
             <Ionicons name="log-out-outline" size={20} color={theme.colors.error} />
@@ -190,4 +245,11 @@ const styles = StyleSheet.create({
   mBtnCancel: { backgroundColor: theme.colors.surfaceSecondary },
   mBtnSave: { backgroundColor: theme.colors.brand },
   errTxt: { color: theme.colors.error, marginTop: theme.spacing.sm, textAlign: 'center' },
+  emptyAddr: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, padding: theme.spacing.md, backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md, marginBottom: theme.spacing.sm },
+  emptyAddrTxt: { color: theme.colors.onSurfaceTertiary },
+  addrRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, padding: theme.spacing.md, backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md, marginBottom: theme.spacing.sm },
+  addrIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: theme.colors.brandTertiary, alignItems: 'center', justifyContent: 'center' },
+  addrLabel: { fontWeight: '800', color: theme.colors.onSurface, fontSize: theme.font.base },
+  addrLine: { color: theme.colors.onSurfaceSecondary, fontSize: theme.font.sm, marginTop: 2 },
+  delBtn: { padding: 6 },
 });

@@ -104,6 +104,22 @@ export default function TrackOrder() {
           </View>
         )}
 
+        {(order.status === 'pending' || order.status === 'accepted') && (
+          <Pressable
+            testID="tracking-cancel-btn"
+            onPress={async () => {
+              try {
+                await api.post(`/orders/${order.id}/cancel`);
+                load();
+              } catch {}
+            }}
+            style={styles.tCancelBtn}
+          >
+            <Ionicons name="close-circle-outline" size={18} color={theme.colors.error} />
+            <Text style={styles.tCancelTxt}>{t('cancelOrder')}</Text>
+          </Pressable>
+        )}
+
         <View style={styles.orderBox}>
           <Text style={styles.orderBoxTitle}>Order details</Text>
           {order.items.map((it: any, i: number) => (
@@ -158,4 +174,6 @@ const styles = StyleSheet.create({
   totalLbl: { fontWeight: '700', color: theme.colors.onSurface, fontSize: theme.font.lg },
   totalVal: { fontWeight: '800', color: theme.colors.brand, fontSize: theme.font.lg },
   codLabel: { marginTop: theme.spacing.md, color: theme.colors.success, fontWeight: '700', textAlign: 'center' },
+  tCancelBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: theme.radius.pill, borderWidth: 1, borderColor: theme.colors.error, marginBottom: theme.spacing.lg },
+  tCancelTxt: { color: theme.colors.error, fontWeight: '700', fontSize: theme.font.base },
 });

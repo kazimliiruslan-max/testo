@@ -109,6 +109,17 @@ export default function OwnerCouriers() {
           <View style={styles.modal}>
             <View style={styles.successIcon}><Ionicons name="checkmark" size={32} color="#fff" /></View>
             <Text style={styles.modalTitle}>{t('inviteSent')}</Text>
+            {inviteResult?.email_sent ? (
+              <View style={styles.emailBadge}>
+                <Ionicons name="mail" size={16} color={theme.colors.brandDark} />
+                <Text style={styles.emailBadgeTxt}>{t('emailSent')} · {inviteResult?.email}</Text>
+              </View>
+            ) : (
+              <View style={[styles.emailBadge, { backgroundColor: '#FFF6E6' }]}>
+                <Ionicons name="alert-circle-outline" size={16} color={theme.colors.warning} />
+                <Text style={[styles.emailBadgeTxt, { color: theme.colors.warning }]}>{t('emailNotSent')}</Text>
+              </View>
+            )}
             <Text style={styles.inviteNote}>{t('inviteLinkNote')}</Text>
             <View style={styles.linkBox}>
               <Text testID="invite-link-value" style={styles.linkTxt} numberOfLines={2}>{inviteResult?.invite_link}</Text>
@@ -155,4 +166,6 @@ const styles = StyleSheet.create({
   linkTxt: { color: theme.colors.brandDark, fontSize: theme.font.sm, fontWeight: '600' },
   copyBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, backgroundColor: theme.colors.brand, padding: theme.spacing.md, borderRadius: theme.radius.pill },
   copyBtnTxt: { color: '#fff', fontWeight: '700', fontSize: theme.font.base },
+  emailBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.colors.brandTertiary, paddingHorizontal: theme.spacing.md, paddingVertical: 6, borderRadius: theme.radius.pill, alignSelf: 'flex-start', marginBottom: theme.spacing.sm },
+  emailBadgeTxt: { color: theme.colors.brandDark, fontWeight: '700', fontSize: theme.font.sm },
 });
