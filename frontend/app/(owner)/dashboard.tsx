@@ -63,6 +63,8 @@ export default function OwnerOrders() {
       }
       setOrders(newOrders);
       setCouriers(c.data);
+    } catch {
+      // ignore — auth failures / offline; retry on next poll
     } finally {
       if (!isPoll) { setLoading(false); setRefreshing(false); }
     }
