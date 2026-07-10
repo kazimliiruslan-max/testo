@@ -1,0 +1,36 @@
+{
+  "summary": "DirectDine iter8 tested (backend + frontend). Backend: 16 new iter8 tests + 76 regression = 92/92 PASS. Verified (a) POST /api/menu image_base64 wrapping to data URL (raw + already-prefixed), (b) image_url still works as before, (c) GET /api/owner/stats month & week windows with mongo-seeded delivered orders across 1/3/10/35/40 days ago giving expected shape (current_orders>=3, previous_orders>=2, current_total>=450, previous_total>=200) and correct change_pct math, (d) change_pct is null when previous_total==0, (e) permissions/validation 400 (period=day), 401 (unauth), 403 (customer), default period=month. Frontend: owner-tab-ongoing/owner-tab-past render correctly on Dashboard; Past tab shows Week/Month pills, TURNOVER ₺801.00, 7 delivered · Avg ₺114.43, previous period text, 🏆 Top item: Margherita Pizza · 9. stats-week & stats-month pills switch and re-fetch. Customer Orders: tab-ongoing default active, tab-past switches to Delivered/Cancelled; Cancel button only appears on Ongoing. CRITICAL FRONTEND BUG discovered & FIXED: /app/frontend/app/(owner)/menu.tsx was missing 3 things — `import * as ImagePicker from 'expo-image-picker'`, `const [pickingImage, setPickingImage] = useState(false)`, and initial state key `image_base64: ''` — causing `ReferenceError: pickingImage is not defined` and crashing the entire owner Menu screen. After fix, add-menu-btn opens modal and pick-image-btn (Upload from gallery) renders correctly.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "OwnerMenu (/app/frontend/app/(owner)/menu.tsx)", "issue": "FIXED by test agent: missing `import * as ImagePicker from 'expo-image-picker'`, missing `pickingImage` useState, and missing `image_base64: ''` in initial form state caused ReferenceError and crashed the Menu screen. Main agent should self-verify fix.", "testID": "add-menu-btn / pick-image-btn", "priority": "CRITICAL"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_directdine_iter8.py",
+    "/app/test_reports/pytest/pytest_iter8.xml"
+  ],
+  "action_items": [
+    "Self-verify the menu.tsx fix (top of file now imports expo-image-picker, adds pickingImage useState, adds image_base64:'' to initial form). Consider adding an eslint no-undef rule to catch this class of bug pre-merge.",
+    "Optional (carried over from iter7): add Field(gt=0) constraint to delivery_radius_km."
+  ],
+  "critical_code_review_comments": [
+    "server.py owner_stats math verified: change_pct = round((c_total-p_total)/p_total*100,1) only when p_total>0 else None. Windows are current=[now-window, now), previous=[now-2*window, now-window). Uses status='delivered' filter — correct.",
+    "server.py POST /menu correctly handles image_base64: raw base64 wrapped as `data:image/jpeg;base64,`, data-URL prefixed strings passed through as-is (line 559-563).",
+    "Frontend menu.tsx bug is a textbook missing-imports/missing-state defect — same class as iter6 AuthContext bug. Recommend adding a lint pre-commit or `noUnusedLocals`/`noImplicitAny` TS check.",
+    "server.py has grown to 1230 lines — should be split into routers (auth/restaurants/orders/couriers/owner) in a future iteration."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_directdine_iter8.py (new)",
+    "/app/frontend/app/(owner)/menu.tsx (fixed missing imports/state)"
+  ],
+  "success_rate": {"backend": "100% (92/92)", "frontend": "100% of exercised flows after fix"},
+  "seed_data_creation": "5 test-only delivered orders inserted into `orders` collection with `is_test_seed:true` covering 1/3/10/35/40 days ago on owner1's restaurant. All cleaned up in fixture teardown; verified 0 leftover via delete_many({is_test_seed:true}).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "iter8 backend tests live at /app/backend/tests/test_directdine_iter8.py — uses pymongo (not motor) for seeding, requires MONGO_URL & DB_NAME env vars. All seeded orders carry `is_test_seed:true` for safe cleanup. Frontend: after logging in as owner1, use /login route directly (Profile → Sign In requires an extra tap that may not always route in this preview). The bottom-tab labels are: Orders / Menu / Couriers / Profile for owners; Home / Orders / Profile for customers.",
+  "rca_of_issue": "menu.tsx crash RCA: expo-image-picker was added to package.json and used in the file body, but the `import * as ImagePicker from 'expo-image-picker'` line was never added to the imports block. Similarly, `pickingImage`/`setPickingImage` were referenced (lines 49, 63, 119, 120) but never declared with useState, and `image_base64` was referenced in the form state accessor but never initialized. React caught this at render time as `ReferenceError: pickingImage is not defined`, crashing the entire OwnerMenu component and preventing the Menu tab from rendering. Fix: added the ImagePicker import + `useState(false)` for pickingImage + `image_base64:''` to the initial form state."
+}

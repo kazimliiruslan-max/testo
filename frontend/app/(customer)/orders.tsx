@@ -29,6 +29,7 @@ export default function CustomerOrders() {
   const [refreshing, setRefreshing] = useState(false);
   const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [tab, setTab] = useState<'ongoing' | 'past'>('ongoing');
 
   const load = useCallback(async () => {
     try {
@@ -51,15 +52,34 @@ export default function CustomerOrders() {
     finally { setCancelling(false); }
   };
 
+  const isOngoing = (s: string) => !['delivered', 'cancelled'].includes(s);
+  const filteredOrders = orders.filter((o) => (tab === 'ongoing' ? isOngoing(o.status) : !isOngoing(o.status)));
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}><Text style={styles.headerTitle}>{t('tab_orders')}</Text></View>
+      <View style={styles.tabsRow}>
+        <Pressable
+          testID="tab-ongoing"
+          onPress={() => setTab('ongoing')}
+          style={[styles.tab, tab === 'ongoing' && styles.tabActive]}
+        >
+          <Text style={[styles.tabTxt, tab === 'ongoing' && styles.tabTxtActive]}>{t('ongoing')}</Text>
+        </Pressable>
+        <Pressable
+          testID="tab-past"
+          onPress={() => setTab('past')}
+          style={[styles.tab, tab === 'past' && styles.tabActive]}
+        >
+          <Text style={[styles.tabTxt, tab === 'past' && styles.tabTxtActive]}>{t('past')}</Text>
+        </Pressable>
+      </View>
       {loading ? (
         <ActivityIndicator size="large" color={theme.colors.brand} style={{ marginTop: 40 }} />
       ) : (
         <FlatList
           testID="orders-list"
-          data={orders}
+          data={filteredOrders}
           keyExtractor={(o) => o.id}
           contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
@@ -142,6 +162,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.surface },
   header: { paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.md },
   headerTitle: { fontSize: theme.font.xxl, fontWeight: '800', color: theme.colors.onSurface },
+  tabsRow: { flexDirection: 'row', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.lg, marginBottom: theme.spacing.md },
+  tab: { flex: 1, paddingVertical: 10, borderRadius: theme.radius.pill, backgroundColor: theme.colors.surfaceSecondary, alignItems: 'center' },
+  tabActive: { backgroundColor: theme.colors.brand },
+  tabTxt: { color: theme.colors.onSurface, fontWeight: '700' },
+  tabTxtActive: { color: '#fff' },
   card: { backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.lg, padding: theme.spacing.lg },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardTitle: { fontSize: theme.font.lg, fontWeight: '700', color: theme.colors.onSurface, flex: 1 },

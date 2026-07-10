@@ -198,6 +198,7 @@ class MenuItemCreate(BaseModel):
     price: float
     category: Optional[str] = "Main"
     image_url: Optional[str] = ""
+    image_base64: Optional[str] = None  # optional data URL or raw base64
     available: Optional[bool] = True
 
 class CourierInfo(BaseModel):
@@ -483,6 +484,68 @@ async def get_my_restaurant(user: dict = Depends(require_roles('restaurant_owner
     return Restaurant(**doc)
 
 
+class OwnerStatsResponse(BaseModel):
+    period: str  # 'week' | 'month'
+    current_total: float
+    current_orders: int
+    current_avg: float
+    previous_total: float
+    previous_orders: int
+    change_pct: Optional[float]  # None if previous_total==0
+    top_item: Optional[str] = None
+    top_item_count: Optional[int] = None
+
+
+@api_router.get("/owner/stats", response_model=OwnerStatsResponse)
+async def owner_stats(period: str = 'month', user: dict = Depends(require_roles('restaurant_owner'))):
+    from datetime import datetime, timedelta, timezone
+    if period not in ('week', 'month'):
+        raise HTTPException(status_code=400, detail="period must be week or month")
+    now = datetime.now(timezone.utc)
+    window = timedelta(days=7) if period == 'week' else timedelta(days=30)
+    current_start = now - window
+    previous_start = now - window - window
+    previous_end = current_start
+
+    orders = await db.orders.find(
+        {'restaurant_id': user['restaurant_id'], 'status': 'delivered'},
+        {'_id': 0}
+    ).to_list(5000)
+
+    def in_window(o, start, end):
+        try:
+            ts = datetime.fromisoformat(o['created_at'])
+        except Exception:
+            return False
+        return start <= ts < end
+
+    current = [o for o in orders if in_window(o, current_start, now)]
+    previous = [o for o in orders if in_window(o, previous_start, previous_end)]
+    c_total = sum(o.get('total', 0.0) for o in current)
+    p_total = sum(o.get('total', 0.0) for o in previous)
+    change_pct: Optional[float] = None
+    if p_total > 0:
+        change_pct = round(((c_total - p_total) / p_total) * 100.0, 1)
+    avg = round(c_total / len(current), 2) if current else 0.0
+
+    # Top item across current period
+    counter: dict[str, int] = {}
+    for o in current:
+        for it in o.get('items', []):
+            name = it.get('name', '?')
+            qty = int(it.get('quantity', 1))
+            counter[name] = counter.get(name, 0) + qty
+    top_item, top_count = (None, None)
+    if counter:
+        top_item, top_count = max(counter.items(), key=lambda kv: kv[1])
+
+    return OwnerStatsResponse(
+        period=period, current_total=round(c_total, 2), current_orders=len(current),
+        current_avg=avg, previous_total=round(p_total, 2), previous_orders=len(previous),
+        change_pct=change_pct, top_item=top_item, top_item_count=top_count,
+    )
+
+
 # ---------- Menu Routes ----------
 @api_router.get("/restaurants/{rid}/menu", response_model=List[MenuItem])
 async def list_menu(rid: str):
@@ -491,6 +554,13 @@ async def list_menu(rid: str):
 
 @api_router.post("/menu", response_model=MenuItem)
 async def create_menu_item(data: MenuItemCreate, user: dict = Depends(require_roles('restaurant_owner'))):
+    # Prefer base64 image if provided (mobile picker → base64 data URL)
+    img = data.image_url or ''
+    if data.image_base64:
+        b64 = data.image_base64
+        if not b64.startswith('data:'):
+            b64 = f'data:image/jpeg;base64,{b64}'
+        img = b64
     item = {
         'id': str(uuid.uuid4()),
         'restaurant_id': user['restaurant_id'],
@@ -498,7 +568,7 @@ async def create_menu_item(data: MenuItemCreate, user: dict = Depends(require_ro
         'description': data.description or '',
         'price': data.price,
         'category': data.category or 'Main',
-        'image_url': data.image_url or '',
+        'image_url': img,
         'available': data.available if data.available is not None else True,
         'created_at': now_iso(),
     }

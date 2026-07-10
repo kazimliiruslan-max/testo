@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, Modal, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, Modal, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { api } from '@/src/api/client';
 import { useAuth } from '@/src/context/AuthContext';
 import { useI18n } from '@/src/context/I18nContext';
@@ -14,8 +15,9 @@ export default function OwnerMenu() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: '', description: '', price: '', category: 'Main', image_url: '' });
+  const [form, setForm] = useState({ name: '', description: '', price: '', category: 'Main', image_url: '', image_base64: '' });
   const [saving, setSaving] = useState(false);
+  const [pickingImage, setPickingImage] = useState(false);
 
   const load = useCallback(async () => {
     if (!user?.restaurant_id) return;
@@ -35,15 +37,38 @@ export default function OwnerMenu() {
     try {
       await api.post('/menu', {
         name: form.name, description: form.description, price: parseFloat(form.price),
-        category: form.category, image_url: form.image_url,
+        category: form.category, image_url: form.image_url || undefined, image_base64: form.image_base64 || undefined,
       });
       setShowAdd(false);
-      setForm({ name: '', description: '', price: '', category: 'Main', image_url: '' });
+      setForm({ name: '', description: '', price: '', category: 'Main', image_url: '', image_base64: '' });
       load();
     } finally {
       setSaving(false);
     }
   };
+
+  const pickImage = async () => {
+    setPickingImage(true);
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) { setPickingImage(false); return; }
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.6,
+        base64: true,
+        allowsEditing: true,
+        aspect: [4, 3],
+      });
+      if (res.canceled || !res.assets?.[0]?.base64) return;
+      setForm((f) => ({ ...f, image_base64: res.assets[0].base64!, image_url: '' }));
+    } finally {
+      setPickingImage(false);
+    }
+  };
+
+  const previewSrc = form.image_base64
+    ? `data:image/jpeg;base64,${form.image_base64}`
+    : form.image_url;
 
   const del = async (id: string) => {
     await api.delete(`/menu/${id}`);
@@ -92,7 +117,15 @@ export default function OwnerMenu() {
                 <TextInput testID="menu-desc-input" style={styles.input} placeholder={t('description')} placeholderTextColor={theme.colors.onSurfaceTertiary} value={form.description} onChangeText={(v) => setForm({ ...form, description: v })} />
                 <TextInput testID="menu-price-input" style={styles.input} placeholder={t('price')} placeholderTextColor={theme.colors.onSurfaceTertiary} keyboardType="decimal-pad" value={form.price} onChangeText={(v) => setForm({ ...form, price: v })} />
                 <TextInput testID="menu-category-input" style={styles.input} placeholder={t('category')} placeholderTextColor={theme.colors.onSurfaceTertiary} value={form.category} onChangeText={(v) => setForm({ ...form, category: v })} />
-                <TextInput testID="menu-image-input" style={styles.input} placeholder={t('imageUrl')} placeholderTextColor={theme.colors.onSurfaceTertiary} value={form.image_url} onChangeText={(v) => setForm({ ...form, image_url: v })} />
+                <TextInput testID="menu-image-input" style={styles.input} placeholder={t('imageUrl')} placeholderTextColor={theme.colors.onSurfaceTertiary} value={form.image_url} onChangeText={(v) => setForm({ ...form, image_url: v, image_base64: '' })} />
+                <Pressable testID="pick-image-btn" onPress={pickImage} style={styles.pickBtn} disabled={pickingImage}>
+                  {pickingImage
+                    ? <ActivityIndicator color={theme.colors.brand} />
+                    : <><Ionicons name="image-outline" size={18} color={theme.colors.brand} /><Text style={styles.pickTxt}>{t('pickFromGallery')}</Text></>}
+                </Pressable>
+                {previewSrc ? (
+                  <Image source={{ uri: previewSrc }} style={styles.imgPreview} resizeMode="cover" />
+                ) : null}
                 <View style={styles.modalActions}>
                   <Pressable onPress={() => setShowAdd(false)} style={[styles.mBtn, styles.mBtnCancel]}><Text>{t('cancel')}</Text></Pressable>
                   <Pressable testID="menu-save-btn" onPress={submit} disabled={saving} style={[styles.mBtn, styles.mBtnSave]}>
@@ -127,4 +160,7 @@ const styles = StyleSheet.create({
   mBtn: { flex: 1, padding: theme.spacing.md, borderRadius: theme.radius.pill, alignItems: 'center' },
   mBtnCancel: { backgroundColor: theme.colors.surfaceSecondary },
   mBtnSave: { backgroundColor: theme.colors.brand },
+  pickBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.brand, borderStyle: 'dashed', marginBottom: theme.spacing.sm },
+  pickTxt: { color: theme.colors.brand, fontWeight: '700' },
+  imgPreview: { width: '100%', height: 140, borderRadius: theme.radius.md, marginBottom: theme.spacing.sm },
 });

@@ -24,6 +24,23 @@ export default function OwnerOrders() {
   const knownIds = useRef<Set<string>>(new Set());
   const knownStatuses = useRef<Record<string, string>>({});
   const firstLoad = useRef(true);
+  const [tab, setTab] = useState<'ongoing' | 'past'>('ongoing');
+  const [statsPeriod, setStatsPeriod] = useState<'week' | 'month'>('month');
+  const [stats, setStats] = useState<any>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+
+  const loadStats = useCallback(async (p: 'week' | 'month') => {
+    setStatsLoading(true);
+    try {
+      const res = await api.get('/owner/stats', { params: { period: p } });
+      setStats(res.data);
+    } catch {}
+    finally { setStatsLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (tab === 'past') loadStats(statsPeriod);
+  }, [tab, statsPeriod, loadStats]);
 
   const load = useCallback(async (isPoll = false) => {
     try {
@@ -95,7 +112,9 @@ export default function OwnerOrders() {
   };
 
   const active = orders.filter((o) => !['delivered', 'cancelled'].includes(o.status));
+  const past = orders.filter((o) => ['delivered', 'cancelled'].includes(o.status));
   const pendingCount = orders.filter((o) => o.status === 'pending').length;
+  const displayOrders = tab === 'ongoing' ? active : past;
 
   if (loading) {
     return <SafeAreaView style={styles.container}><ActivityIndicator size="large" color={theme.colors.brand} style={{ marginTop: 60 }} /></SafeAreaView>;
@@ -128,20 +147,72 @@ export default function OwnerOrders() {
         )}
       </View>
 
-      <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <Text style={styles.statNum}>{active.length}</Text>
-          <Text style={styles.statLbl}>{t('activeOrders')}</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statNum}>{couriers.length}</Text>
-          <Text style={styles.statLbl}>{t('totalCouriers')}</Text>
-        </View>
+      <View style={styles.tabsRow}>
+        <Pressable testID="owner-tab-ongoing" onPress={() => setTab('ongoing')} style={[styles.tab, tab === 'ongoing' && styles.tabActive]}>
+          <Text style={[styles.tabTxt, tab === 'ongoing' && styles.tabTxtActive]}>{t('ongoing')} · {active.length}</Text>
+        </Pressable>
+        <Pressable testID="owner-tab-past" onPress={() => setTab('past')} style={[styles.tab, tab === 'past' && styles.tabActive]}>
+          <Text style={[styles.tabTxt, tab === 'past' && styles.tabTxtActive]}>{t('past')}</Text>
+        </Pressable>
       </View>
+
+      {tab === 'ongoing' ? (
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statNum}>{active.length}</Text>
+            <Text style={styles.statLbl}>{t('activeOrders')}</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statNum}>{couriers.length}</Text>
+            <Text style={styles.statLbl}>{t('totalCouriers')}</Text>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.periodBox}>
+          <View style={styles.periodPills}>
+            <Pressable testID="stats-week" onPress={() => setStatsPeriod('week')} style={[styles.periodPill, statsPeriod === 'week' && styles.periodPillActive]}>
+              <Text style={[styles.periodTxt, statsPeriod === 'week' && styles.periodTxtActive]}>{t('week')}</Text>
+            </Pressable>
+            <Pressable testID="stats-month" onPress={() => setStatsPeriod('month')} style={[styles.periodPill, statsPeriod === 'month' && styles.periodPillActive]}>
+              <Text style={[styles.periodTxt, statsPeriod === 'month' && styles.periodTxtActive]}>{t('month')}</Text>
+            </Pressable>
+          </View>
+          {statsLoading || !stats ? (
+            <ActivityIndicator color={theme.colors.brand} />
+          ) : (
+            <>
+              <Text style={styles.turnoverLbl}>{t('turnover')}</Text>
+              <View style={styles.turnoverRow}>
+                <Text style={styles.turnoverVal}>₺{stats.current_total.toFixed(2)}</Text>
+                {stats.change_pct != null && (
+                  <View style={[styles.changePill, stats.change_pct >= 0 ? styles.changeUp : styles.changeDown]}>
+                    <Ionicons name={stats.change_pct >= 0 ? 'trending-up' : 'trending-down'} size={14} color="#fff" />
+                    <Text style={styles.changeTxt}>
+                      {stats.change_pct >= 0 ? '+' : ''}{stats.change_pct}%
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.subMeta}>
+                {stats.current_orders} {t('deliveredOrders')} · {t('avgOrder')} ₺{stats.current_avg.toFixed(2)}
+              </Text>
+              <Text style={styles.subMeta}>
+                {t('previousPeriod')}: ₺{stats.previous_total.toFixed(2)} ({stats.previous_orders} {t('orders')})
+              </Text>
+              {stats.top_item && (
+                <View style={styles.topItem}>
+                  <Ionicons name="trophy" size={14} color={theme.colors.accent} />
+                  <Text style={styles.topItemTxt}>{t('topItem')}: {stats.top_item} · {stats.top_item_count}</Text>
+                </View>
+              )}
+            </>
+          )}
+        </View>
+      )}
 
       <FlatList
         testID="owner-orders-list"
-        data={orders}
+        data={displayOrders}
         keyExtractor={(o) => o.id}
         contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.xxl }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
@@ -230,6 +301,27 @@ const styles = StyleSheet.create({
   statCard: { flex: 1, backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md, padding: theme.spacing.lg },
   statNum: { fontSize: theme.font.xxl, fontWeight: '800', color: theme.colors.brandDark },
   statLbl: { color: theme.colors.onSurfaceSecondary, fontSize: theme.font.sm, marginTop: 2 },
+  tabsRow: { flexDirection: 'row', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.lg, marginBottom: theme.spacing.md },
+  tab: { flex: 1, paddingVertical: 10, borderRadius: theme.radius.pill, backgroundColor: theme.colors.surfaceSecondary, alignItems: 'center' },
+  tabActive: { backgroundColor: theme.colors.brand },
+  tabTxt: { color: theme.colors.onSurface, fontWeight: '700' },
+  tabTxtActive: { color: '#fff' },
+  periodBox: { marginHorizontal: theme.spacing.lg, backgroundColor: theme.colors.brandTertiary, borderRadius: theme.radius.md, padding: theme.spacing.lg, marginBottom: theme.spacing.md },
+  periodPills: { flexDirection: 'row', gap: theme.spacing.sm, marginBottom: theme.spacing.md, alignSelf: 'flex-start' },
+  periodPill: { paddingHorizontal: theme.spacing.md, paddingVertical: 6, borderRadius: theme.radius.pill, backgroundColor: theme.colors.surface },
+  periodPillActive: { backgroundColor: theme.colors.brandDark },
+  periodTxt: { color: theme.colors.brandDark, fontWeight: '700', fontSize: theme.font.sm },
+  periodTxtActive: { color: '#fff' },
+  turnoverLbl: { color: theme.colors.brandDark, fontSize: theme.font.sm, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  turnoverRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, marginTop: 4 },
+  turnoverVal: { fontSize: theme.font.xxxl, fontWeight: '800', color: theme.colors.brandDark },
+  changePill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: theme.spacing.md, paddingVertical: 4, borderRadius: theme.radius.pill },
+  changeUp: { backgroundColor: theme.colors.brand },
+  changeDown: { backgroundColor: theme.colors.error },
+  changeTxt: { color: '#fff', fontWeight: '800', fontSize: theme.font.sm },
+  subMeta: { color: theme.colors.onSurfaceSecondary, marginTop: 4, fontSize: theme.font.sm },
+  topItem: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: theme.spacing.sm },
+  topItemTxt: { color: theme.colors.onSurface, fontWeight: '600' },
   card: { backgroundColor: theme.colors.surfaceSecondary, padding: theme.spacing.md, borderRadius: theme.radius.md, borderLeftWidth: 4, borderLeftColor: 'transparent' },
   cardPending: { borderLeftColor: theme.colors.brand, backgroundColor: theme.colors.brandTertiary },
   cardTop: { flexDirection: 'row', alignItems: 'center' },
