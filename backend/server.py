@@ -13,6 +13,7 @@ import bcrypt
 import httpx
 import resend
 import asyncio
+import math
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Literal
@@ -152,6 +153,7 @@ class Restaurant(BaseModel):
     lat: float = 41.0082
     lng: float = 28.9784
     delivery_minutes: int = 30
+    delivery_radius_km: float = 5.0
     subscription_active: bool = True
     is_featured: bool = False
     featured_tagline: str = ""
@@ -166,6 +168,7 @@ class RestaurantCreate(BaseModel):
     lat: Optional[float] = 41.0082
     lng: Optional[float] = 28.9784
     delivery_minutes: Optional[int] = 30
+    delivery_radius_km: Optional[float] = 5.0
 
 class RestaurantUpdate(BaseModel):
     name: Optional[str] = None
@@ -176,6 +179,7 @@ class RestaurantUpdate(BaseModel):
     lat: Optional[float] = None
     lng: Optional[float] = None
     delivery_minutes: Optional[int] = None
+    delivery_radius_km: Optional[float] = None
 
 class MenuItem(BaseModel):
     id: str
@@ -387,6 +391,7 @@ async def register(data: RegisterInput):
             'lat': 41.0082,
             'lng': 28.9784,
             'delivery_minutes': 30,
+            'delivery_radius_km': 5.0,
             'subscription_active': True,
             'created_at': now_iso(),
         }
@@ -422,13 +427,38 @@ async def me(user: dict = Depends(get_current_user)):
 
 
 # ---------- Restaurant Routes ----------
-@api_router.get("/restaurants", response_model=List[Restaurant])
-async def list_restaurants(cuisine: Optional[str] = None):
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    R = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlng / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+
+class RestaurantWithDistance(Restaurant):
+    distance_km: Optional[float] = None
+    in_range: bool = True
+
+
+@api_router.get("/restaurants", response_model=List[RestaurantWithDistance])
+async def list_restaurants(cuisine: Optional[str] = None, lat: Optional[float] = None, lng: Optional[float] = None):
     q = {'subscription_active': True}
     if cuisine and cuisine != 'All':
         q['cuisine'] = cuisine
     docs = await db.restaurants.find(q, {'_id': 0}).to_list(500)
-    return [Restaurant(**d) for d in docs]
+    out: List[RestaurantWithDistance] = []
+    for d in docs:
+        rest = Restaurant(**d)
+        entry = RestaurantWithDistance(**rest.dict())
+        if lat is not None and lng is not None:
+            dist = _haversine_km(lat, lng, rest.lat, rest.lng)
+            entry.distance_km = round(dist, 2)
+            entry.in_range = dist <= (rest.delivery_radius_km or 5.0)
+        out.append(entry)
+    # Sort by in_range first, then by distance ascending; if no location given, keep DB order.
+    if lat is not None and lng is not None:
+        out.sort(key=lambda r: (not r.in_range, r.distance_km if r.distance_km is not None else 9e9))
+    return out
 
 @api_router.get("/restaurants/{rid}", response_model=Restaurant)
 async def get_restaurant(rid: str):
@@ -655,7 +685,7 @@ async def switch_to_owner(data: UpgradeToOwnerInput, user: dict = Depends(get_cu
         'name': data.restaurant_name, 'description': '', 'cuisine': 'Other',
         'image_url': 'https://images.pexels.com/photos/1279330/pexels-photo-1279330.jpeg',
         'rating': 5.0, 'address': '', 'lat': 41.0082, 'lng': 28.9784,
-        'delivery_minutes': 30, 'subscription_active': True, 'is_featured': False,
+        'delivery_minutes': 30, 'delivery_radius_km': 5.0, 'subscription_active': True, 'is_featured': False,
         'featured_tagline': '', 'created_at': now_iso(),
     }
     await db.restaurants.insert_one(rest_doc)
@@ -921,6 +951,7 @@ async def seed_data():
         'image_url': 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=800',
         'rating': 4.8, 'address': 'Istiklal Cd. 45, Beyoglu', 'lat': 41.0369, 'lng': 28.9850,
         'delivery_minutes': 25, 'subscription_active': True,
+        'delivery_radius_km': 4.0,
         'is_featured': True, 'featured_tagline': 'Featured this week · Free drink with any order',
         'created_at': now_iso(),
     })
@@ -957,6 +988,7 @@ async def seed_data():
         'image_url': 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800',
         'rating': 4.6, 'address': 'Bagdat Cd. 120, Kadikoy', 'lat': 40.9660, 'lng': 29.0625,
         'delivery_minutes': 20, 'subscription_active': True,
+        'delivery_radius_km': 8.0,
         'is_featured': False, 'featured_tagline': '', 'created_at': now_iso(),
     })
     await db.users.insert_one({
@@ -989,6 +1021,7 @@ async def seed_data():
         'image_url': 'https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=800',
         'rating': 4.9, 'address': 'Nispetiye Cd. 12, Etiler', 'lat': 41.0810, 'lng': 29.0210,
         'delivery_minutes': 35, 'subscription_active': True,
+        'delivery_radius_km': 3.0,
         'is_featured': True, 'featured_tagline': 'Chef\'s pick · Fresh daily catch',
         'created_at': now_iso(),
     })

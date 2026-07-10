@@ -1,0 +1,41 @@
+{
+  "summary": "DirectDine iter7 tested (backend + frontend). AuthContext.tsx correctly imports Platform + Notifications (lines 2-3). Backend: 11 new iter7 tests + 65 iter6 regression tests all pass (76/76). Haversine distance + in_range filtering + sort work correctly for both Beyoglu and Kadikoy coordinates. PUT /api/restaurants/me accepts delivery_radius_km and persists. Frontend: location-bar renders with 'Delivering to' text, distance chips shown (0.0 km for Bella Napoli from Beyoglu), 'Restaurants near you' + 'Show all (2)' toggle works and reveals out-of-range Sakura (5.8 km) & Smash (10.2 km) with opacity 0.6 + 'Out of delivery range' tag + red distance. Owner profile → Restaurant settings modal opens, prefilled with current radius (4), Save updates via PUT (verified via GET: 10.0). Reset back to 4.0 after test. Featured card also shows distance chip. Minor: DB contains 3 leftover restaurants from previous manual owner registrations (wwww, Test Rest, TEST Switched Diner) with default radius 5km — not a code bug but distorts 'expected 3 seeded' assertions; tests were made tolerant.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/restaurants/me", "issue": "delivery_radius_km lacks Pydantic constraint (no gt=0). Values 0 and negative numbers are accepted silently and persist to DB. Non-numeric correctly rejected with 422. Recommend adding `Field(gt=0)` to RestaurantUpdate.delivery_radius_km and RestaurantCreate."},
+      {"endpoint": "N/A (data hygiene)", "issue": "Preview DB still has 3 leftover test restaurants (wwww, Test Rest, TEST Switched Diner) from prior owner-registration test runs. Original problem statement claimed 'DB was fully wiped', but these persist. Not blocking — the 3 seed restaurants (Bella Napoli 4km, Smash 8km, Sakura 3km) are present with correct radii."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_directdine_iter7.py",
+    "/app/test_reports/pytest/pytest_iter7.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: Add `Field(gt=0)` validator to RestaurantUpdate.delivery_radius_km (currently 0 and negative values silently pass through). Non-numeric already returns 422.",
+    "OPTIONAL: Consider a one-time cleanup script (or a smarter idempotent seed) to purge leftover test-created restaurants from the preview DB so the customer home isn't cluttered with 'wwww'/'Test Rest'/'TEST Switched Diner'."
+  ],
+  "critical_code_review_comments": [
+    "AuthContext.tsx imports (Platform, Notifications) correctly added on lines 2-3 — iter6 defect fixed.",
+    "server.py list_restaurants: sort key `(not r.in_range, r.distance_km if r.distance_km is not None else 9e9)` is correct — in-range first, then by ascending distance. No location => distance_km stays None and list keeps DB order.",
+    "server.py update_my_restaurant uses `{k:v for k,v in data.dict().items() if v is not None}` — correct partial-update pattern.",
+    "home.tsx: out-of-range card onPress is guarded (`() => !isOut && router.push(...)`) — tapping is a true no-op as spec'd.",
+    "LocationContext.tsx persists loc via AsyncStorage with idempotent clear on null — clean.",
+    "server.py is 1159 lines — approaching the 700-line guideline threshold; consider splitting routes into routers by feature (restaurants / orders / auth / couriers) in a future iteration."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_directdine_iter7.py (new)"
+  ],
+  "success_rate": {"backend": "100% (76/76)", "frontend": "100% of exercised flows"},
+  "seed_data_creation": "None. Test mutates Bella Napoli's delivery_radius_km temporarily (4→12.5→4 in pytest, 4→10→4 in Playwright) and restores it after each test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "iter7 backend tests live at /app/backend/tests/test_directdine_iter7.py. Login testIDs are `login-email-input`, `login-password-input`, `login-submit-button` (NOT the shorter versions). Owner profile is served at /profile route (not a tab labeled 'Profile' via get_by_text). Playwright must use context.grant_permissions(['geolocation']) + context.set_geolocation({...}) BEFORE navigation so LocationContext auto-loads. Preview DB currently has 3 leftover restaurants beyond the 3 seeded ones — write tolerant assertions.",
+  "rca_of_issue": "N/A — no defects reproduced. iter6's missing-imports defect was independently verified fixed: /app/frontend/src/context/AuthContext.tsx lines 2-3 now contain `import { Platform } from 'react-native';` and `import * as Notifications from 'expo-notifications';`, and both are used in registerPushForUser (lines 32-40). registerPushForUser early-returns on web so no ReferenceError path can be hit in the preview."
+}

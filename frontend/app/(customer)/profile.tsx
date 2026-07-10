@@ -21,6 +21,32 @@ export default function CustomerProfile() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
+  // Restaurant settings modal (owner)
+  const [showRestSettings, setShowRestSettings] = useState(false);
+  const [restInfo, setRestInfo] = useState<any>(null);
+  const [radiusInput, setRadiusInput] = useState('');
+  const [savingRest, setSavingRest] = useState(false);
+
+  const openRestSettings = async () => {
+    setShowRestSettings(true);
+    setRestInfo(null);
+    try {
+      const r = await api.get('/restaurants/me/info');
+      setRestInfo(r.data);
+      setRadiusInput(String(r.data.delivery_radius_km ?? 5));
+    } catch {}
+  };
+
+  const saveRestSettings = async () => {
+    const val = parseFloat(radiusInput);
+    if (isNaN(val) || val <= 0) return;
+    setSavingRest(true);
+    try {
+      await api.put('/restaurants/me', { delivery_radius_km: val });
+      setShowRestSettings(false);
+    } catch {}
+    finally { setSavingRest(false); }
+  };
 
   useEffect(() => {
     if (user?.role === 'customer') {
@@ -105,6 +131,11 @@ export default function CustomerProfile() {
             <Pressable testID="go-restaurant-dashboard" onPress={() => router.replace('/(owner)/dashboard')} style={styles.rowBtn}>
               <Ionicons name="storefront" size={22} color={theme.colors.brand} />
               <Text style={styles.rowBtnTxt}>Restaurant Dashboard</Text>
+              <Ionicons name="chevron-forward" size={18} color={theme.colors.onSurfaceTertiary} />
+            </Pressable>
+            <Pressable testID="open-restaurant-settings" onPress={openRestSettings} style={styles.rowBtn}>
+              <Ionicons name="settings-outline" size={22} color={theme.colors.brand} />
+              <Text style={styles.rowBtnTxt}>{t('restaurantSettings')}</Text>
               <Ionicons name="chevron-forward" size={18} color={theme.colors.onSurfaceTertiary} />
             </Pressable>
             <Pressable testID="switch-to-customer" onPress={switchBackToCustomer} style={styles.rowBtn}>
@@ -202,6 +233,52 @@ export default function CustomerProfile() {
                   {saving ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>{t('activateRestaurant')}</Text>}
                 </Pressable>
               </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+      <Modal visible={showRestSettings} transparent animationType="slide" onRequestClose={() => setShowRestSettings(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.modalBg}>
+            <View style={styles.modal}>
+              <Text style={styles.modalTitle}>{t('restaurantSettings')}</Text>
+              {!restInfo ? (
+                <ActivityIndicator color={theme.colors.brand} style={{ marginVertical: theme.spacing.lg }} />
+              ) : (
+                <>
+                  <Text style={{ color: theme.colors.onSurfaceSecondary, marginBottom: theme.spacing.sm }}>
+                    {restInfo.name}
+                  </Text>
+                  <Text style={{ fontSize: theme.font.sm, color: theme.colors.onSurfaceTertiary, fontWeight: '700', marginTop: theme.spacing.md }}>
+                    {t('deliveryRadiusKm').toUpperCase()}
+                  </Text>
+                  <TextInput
+                    testID="restaurant-radius-input"
+                    style={styles.input}
+                    keyboardType="decimal-pad"
+                    value={radiusInput}
+                    onChangeText={setRadiusInput}
+                    placeholder="5"
+                    placeholderTextColor={theme.colors.onSurfaceTertiary}
+                  />
+                  <Text style={{ color: theme.colors.onSurfaceTertiary, fontSize: theme.font.sm, marginTop: theme.spacing.xs }}>
+                    {t('radiusHelp')}
+                  </Text>
+                  <View style={styles.mActions}>
+                    <Pressable onPress={() => setShowRestSettings(false)} style={[styles.mBtn, styles.mBtnCancel]}>
+                      <Text>{t('cancel')}</Text>
+                    </Pressable>
+                    <Pressable
+                      testID="save-restaurant-settings"
+                      onPress={saveRestSettings}
+                      disabled={savingRest}
+                      style={[styles.mBtn, styles.mBtnSave]}
+                    >
+                      {savingRest ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>{t('save')}</Text>}
+                    </Pressable>
+                  </View>
+                </>
+              )}
             </View>
           </View>
         </KeyboardAvoidingView>
