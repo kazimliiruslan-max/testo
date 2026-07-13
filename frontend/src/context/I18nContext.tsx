@@ -181,6 +181,10 @@ const strings = {
     minOrderNotMet: 'Add {amount} more to reach the minimum order',
     minOrderRestaurant: 'Min order',
     hiddenFeeHint: 'Prices already include delivery fee',
+    campaignPickDuration: 'Pick campaign duration (days)',
+    stopCampaign: 'Stop campaign',
+    campaignEnds: 'Ends',
+    restaurantAdmin: 'Restaurant Admin',
   },
   tr: {
     welcome: 'EasYum\'a Hoş Geldiniz',
@@ -349,6 +353,10 @@ const strings = {
     minOrderNotMet: 'Minimum tutara ulaşmak için {amount} daha ekleyin',
     minOrderRestaurant: 'Min. sipariş',
     hiddenFeeHint: 'Fiyatlara teslimat ücreti dahildir',
+    campaignPickDuration: 'Kampanya süresini seçin (gün)',
+    stopCampaign: 'Kampanyayı durdur',
+    campaignEnds: 'Bitiş',
+    restaurantAdmin: 'Restoran Paneli',
   },
 };
 

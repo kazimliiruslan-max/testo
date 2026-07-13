@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Body
 from fastapi.security import OAuth2PasswordBearer
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -506,10 +506,17 @@ async def get_my_restaurant(user: dict = Depends(require_roles('restaurant_owner
     return Restaurant(**doc)
 
 
+class CampaignStartInput(BaseModel):
+    days: int = Field(default=3, ge=1, le=90)
+
+
 @api_router.post("/restaurants/me/campaign/start", response_model=Restaurant)
-async def start_campaign(user: dict = Depends(require_roles('restaurant_owner'))):
+async def start_campaign(
+    data: CampaignStartInput = Body(default_factory=CampaignStartInput),
+    user: dict = Depends(require_roles('restaurant_owner'))
+):
     from datetime import datetime, timedelta, timezone
-    ends = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
+    ends = (datetime.now(timezone.utc) + timedelta(days=data.days)).isoformat()
     await db.restaurants.update_one(
         {'id': user['restaurant_id']},
         {'$set': {'campaign_active': True, 'campaign_ends_at': ends}}

@@ -336,27 +336,45 @@ export default function CustomerProfile() {
                       {savingRest ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>{t('save')}</Text>}
                     </Pressable>
                   </View>
-                  <Pressable
-                    testID="toggle-campaign-btn"
-                    onPress={async () => {
-                      const url = restInfo.campaign_active ? '/restaurants/me/campaign/stop' : '/restaurants/me/campaign/start';
-                      try {
-                        const res = await api.post(url);
-                        setRestInfo(res.data);
-                      } catch {}
-                    }}
-                    style={[styles.campaignBtn, restInfo.campaign_active ? styles.campaignStop : styles.campaignStart]}
-                  >
-                    <Ionicons name={restInfo.campaign_active ? 'stop-circle' : 'flash'} size={18} color="#fff" />
-                    <Text style={styles.campaignBtnTxt}>
-                      {restInfo.campaign_active
-                        ? 'Stop campaign'
-                        : '⚡ Start 3-day discount campaign'}
-                    </Text>
-                  </Pressable>
+                  {!restInfo.campaign_active ? (
+                    <>
+                      <Text style={styles.campaignHint}>⚡ {t('campaignPickDuration')}</Text>
+                      <View style={styles.campaignDurationRow}>
+                        {[1, 3, 7, 14, 30].map((d) => (
+                          <Pressable
+                            key={d}
+                            testID={`campaign-duration-${d}`}
+                            onPress={async () => {
+                              try {
+                                const res = await api.post('/restaurants/me/campaign/start', { days: d });
+                                setRestInfo(res.data);
+                              } catch {}
+                            }}
+                            style={styles.campaignDurationChip}
+                          >
+                            <Text style={styles.campaignDurationTxt}>{d}d</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </>
+                  ) : (
+                    <Pressable
+                      testID="toggle-campaign-btn"
+                      onPress={async () => {
+                        try {
+                          const res = await api.post('/restaurants/me/campaign/stop');
+                          setRestInfo(res.data);
+                        } catch {}
+                      }}
+                      style={[styles.campaignBtn, styles.campaignStop]}
+                    >
+                      <Ionicons name="stop-circle" size={18} color="#fff" />
+                      <Text style={styles.campaignBtnTxt}>{t('stopCampaign')}</Text>
+                    </Pressable>
+                  )}
                   {restInfo.campaign_active && restInfo.campaign_ends_at && (
                     <Text style={{ textAlign: 'center', color: theme.colors.brandDark, marginTop: 6, fontWeight: '600' }}>
-                      Ends {new Date(restInfo.campaign_ends_at).toLocaleString()}
+                      {t('campaignEnds')} {new Date(restInfo.campaign_ends_at).toLocaleString()}
                     </Text>
                   )}
                 </>
@@ -419,4 +437,8 @@ const styles = StyleSheet.create({
   campaignStart: { backgroundColor: theme.colors.brand },
   campaignStop: { backgroundColor: theme.colors.error },
   campaignBtnTxt: { color: '#fff', fontWeight: '800', fontSize: theme.font.base },
+  campaignHint: { textAlign: 'center', color: theme.colors.onSurfaceSecondary, marginTop: theme.spacing.md, fontSize: theme.font.sm, fontWeight: '600' },
+  campaignDurationRow: { flexDirection: 'row', gap: theme.spacing.sm, marginTop: theme.spacing.sm, justifyContent: 'center', flexWrap: 'wrap' },
+  campaignDurationChip: { minWidth: 48, paddingHorizontal: theme.spacing.md, paddingVertical: 8, backgroundColor: theme.colors.brand, borderRadius: theme.radius.pill, alignItems: 'center' },
+  campaignDurationTxt: { color: '#fff', fontWeight: '800', fontSize: theme.font.base },
 });
