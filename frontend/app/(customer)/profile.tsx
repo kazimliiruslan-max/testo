@@ -323,6 +323,51 @@ export default function CustomerProfile() {
                   <Text style={{ color: theme.colors.onSurfaceTertiary, fontSize: theme.font.sm, marginTop: theme.spacing.xs }}>
                     {t('minOrderHelp')}
                   </Text>
+
+                  {/* Campaign section (moved above Save/Cancel for clearer hierarchy) */}
+                  <View style={styles.divider} />
+                  <Text style={styles.sectionLabelInline}>⚡ {t('campaignPickDuration')}</Text>
+                  {!restInfo.campaign_active ? (
+                    <View style={styles.campaignDurationRow}>
+                      {[1, 3, 7, 14, 30].map((d) => (
+                        <Pressable
+                          key={d}
+                          testID={`campaign-duration-${d}`}
+                          onPress={async () => {
+                            try {
+                              const res = await api.post('/restaurants/me/campaign/start', { days: d });
+                              setRestInfo(res.data);
+                            } catch {}
+                          }}
+                          style={styles.campaignDurationChip}
+                        >
+                          <Text style={styles.campaignDurationTxt}>{d}d</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : (
+                    <>
+                      <Pressable
+                        testID="toggle-campaign-btn"
+                        onPress={async () => {
+                          try {
+                            const res = await api.post('/restaurants/me/campaign/stop');
+                            setRestInfo(res.data);
+                          } catch {}
+                        }}
+                        style={[styles.campaignBtn, styles.campaignStop]}
+                      >
+                        <Ionicons name="stop-circle" size={18} color="#fff" />
+                        <Text style={styles.campaignBtnTxt}>{t('stopCampaign')}</Text>
+                      </Pressable>
+                      {restInfo.campaign_ends_at && (
+                        <Text style={{ textAlign: 'center', color: theme.colors.brandDark, marginTop: 6, fontWeight: '600' }}>
+                          {t('campaignEnds')} {new Date(restInfo.campaign_ends_at).toLocaleString()}
+                        </Text>
+                      )}
+                    </>
+                  )}
+
                   <View style={styles.mActions}>
                     <Pressable onPress={() => setShowRestSettings(false)} style={[styles.mBtn, styles.mBtnCancel]}>
                       <Text>{t('cancel')}</Text>
@@ -336,47 +381,6 @@ export default function CustomerProfile() {
                       {savingRest ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>{t('save')}</Text>}
                     </Pressable>
                   </View>
-                  {!restInfo.campaign_active ? (
-                    <>
-                      <Text style={styles.campaignHint}>⚡ {t('campaignPickDuration')}</Text>
-                      <View style={styles.campaignDurationRow}>
-                        {[1, 3, 7, 14, 30].map((d) => (
-                          <Pressable
-                            key={d}
-                            testID={`campaign-duration-${d}`}
-                            onPress={async () => {
-                              try {
-                                const res = await api.post('/restaurants/me/campaign/start', { days: d });
-                                setRestInfo(res.data);
-                              } catch {}
-                            }}
-                            style={styles.campaignDurationChip}
-                          >
-                            <Text style={styles.campaignDurationTxt}>{d}d</Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                    </>
-                  ) : (
-                    <Pressable
-                      testID="toggle-campaign-btn"
-                      onPress={async () => {
-                        try {
-                          const res = await api.post('/restaurants/me/campaign/stop');
-                          setRestInfo(res.data);
-                        } catch {}
-                      }}
-                      style={[styles.campaignBtn, styles.campaignStop]}
-                    >
-                      <Ionicons name="stop-circle" size={18} color="#fff" />
-                      <Text style={styles.campaignBtnTxt}>{t('stopCampaign')}</Text>
-                    </Pressable>
-                  )}
-                  {restInfo.campaign_active && restInfo.campaign_ends_at && (
-                    <Text style={{ textAlign: 'center', color: theme.colors.brandDark, marginTop: 6, fontWeight: '600' }}>
-                      {t('campaignEnds')} {new Date(restInfo.campaign_ends_at).toLocaleString()}
-                    </Text>
-                  )}
                 </>
               )}
             </View>
@@ -441,4 +445,6 @@ const styles = StyleSheet.create({
   campaignDurationRow: { flexDirection: 'row', gap: theme.spacing.sm, marginTop: theme.spacing.sm, justifyContent: 'center', flexWrap: 'wrap' },
   campaignDurationChip: { minWidth: 48, paddingHorizontal: theme.spacing.md, paddingVertical: 8, backgroundColor: theme.colors.brand, borderRadius: theme.radius.pill, alignItems: 'center' },
   campaignDurationTxt: { color: '#fff', fontWeight: '800', fontSize: theme.font.base },
+  divider: { height: 1, backgroundColor: theme.colors.border, marginVertical: theme.spacing.md },
+  sectionLabelInline: { fontSize: theme.font.sm, color: theme.colors.onSurfaceSecondary, fontWeight: '700', marginBottom: theme.spacing.sm },
 });
