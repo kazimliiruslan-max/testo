@@ -74,6 +74,12 @@ export default function RestaurantDetail() {
         </View>
 
         <View style={styles.body}>
+          {restaurant.campaign_active && (
+            <View style={styles.campaignBanner}>
+              <Ionicons name="pricetag" size={16} color="#fff" />
+              <Text style={styles.campaignBannerTxt}>Campaign live · 3 days</Text>
+            </View>
+          )}
           {restaurant.description ? <Text style={styles.desc}>{restaurant.description}</Text> : null}
           {restaurant.min_order_value > 0 && (
             <View style={styles.minOrderPill}>
@@ -104,16 +110,20 @@ export default function RestaurantDetail() {
             ItemSeparatorComponent={() => <View style={{ height: theme.spacing.md }} />}
             renderItem={({ item }) => {
               const shownPrice = item.display_price ?? item.price;
-              const hasDiscount = item.display_price != null && item.display_price < item.price;
+              const feePct = Number(item.delivery_fee_pct || 0);
+              // During an active campaign the backend zeroes the delivery-fee uplift, so
+              // display_price == price while the "regular" price is price * (1 + fee/100).
+              const regularPrice = item.price * (1 + feePct / 100);
+              const hasDiscount = restaurant.campaign_active && feePct > 0 && regularPrice > shownPrice + 0.01;
               return (
               <View style={styles.menuItem}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.menuName}>{item.name}</Text>
                   <Text style={styles.menuDesc}>{item.description}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: theme.spacing.xs }}>
-                    <Text style={styles.menuPrice}>₺{shownPrice.toFixed(2)}</Text>
+                    <Text style={[styles.menuPrice, hasDiscount && { color: theme.colors.error }]}>₺{shownPrice.toFixed(2)}</Text>
                     {hasDiscount && (
-                      <Text style={styles.menuPriceOld}>₺{item.price.toFixed(2)}</Text>
+                      <Text style={styles.menuPriceOld}>₺{regularPrice.toFixed(2)}</Text>
                     )}
                   </View>
                 </View>
@@ -182,6 +192,8 @@ const styles = StyleSheet.create({
   menuPriceOld: { fontSize: theme.font.sm, color: theme.colors.onSurfaceTertiary, textDecorationLine: 'line-through' },
   minOrderPill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.colors.brandTertiary, paddingHorizontal: theme.spacing.md, paddingVertical: 4, borderRadius: theme.radius.pill, marginBottom: theme.spacing.md },
   minOrderPillTxt: { color: theme.colors.brandDark, fontWeight: '700', fontSize: theme.font.sm },
+  campaignBanner: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.colors.error, paddingHorizontal: theme.spacing.md, paddingVertical: 6, borderRadius: theme.radius.pill, marginBottom: theme.spacing.sm },
+  campaignBannerTxt: { color: '#fff', fontWeight: '800', fontSize: theme.font.sm },
   addBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.brand, alignItems: 'center', justifyContent: 'center' },
   cartBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: theme.colors.surface, borderTopWidth: 1, borderTopColor: theme.colors.divider, padding: theme.spacing.md },
   cartBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.brand, borderRadius: theme.radius.pill, paddingHorizontal: theme.spacing.lg, height: 54, gap: theme.spacing.md },

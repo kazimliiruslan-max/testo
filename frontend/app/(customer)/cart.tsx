@@ -52,7 +52,17 @@ export default function Cart() {
 
   useEffect(() => {
     if (user?.role === 'customer') {
-      api.get('/addresses').then((r) => setSavedAddresses(r.data)).catch(() => {});
+      api.get('/addresses').then((r) => {
+        // Dedup by label (case-insensitive) + address, keep the first (most recent) entry
+        const seen = new Set<string>();
+        const deduped = (r.data as SavedAddress[]).filter((a) => {
+          const key = `${(a.label || '').toLowerCase().trim()}|${(a.address || '').toLowerCase().trim()}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setSavedAddresses(deduped);
+      }).catch(() => {});
     } else {
       setSavedAddresses([]);
     }
