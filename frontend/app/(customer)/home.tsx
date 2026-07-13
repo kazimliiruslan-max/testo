@@ -65,16 +65,21 @@ export default function CustomerHome() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.headerHello}>{user ? `Hi, ${user.name.split(' ')[0]} 👋` : 'Hi there 👋'}</Text>
-          <Text style={styles.headerTitle}>DirectDine</Text>
+      <LinearGradient
+        colors={[theme.colors.brandTertiary, theme.colors.surface]}
+        style={styles.headerGradient}
+      >
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.headerHello}>{user ? `Hi, ${user.name.split(' ')[0]} 👋` : 'Hi there 👋'}</Text>
+            <Text style={styles.headerTitle}>EasYum</Text>
+          </View>
+          <View style={styles.badge}>
+            <Ionicons name="leaf" size={14} color={theme.colors.brandDark} />
+            <Text style={styles.badgeTxt}>{t('noCommission')}</Text>
+          </View>
         </View>
-        <View style={styles.badge}>
-          <Ionicons name="leaf" size={14} color={theme.colors.brandDark} />
-          <Text style={styles.badgeTxt}>{t('noCommission')}</Text>
-        </View>
-      </View>
+      </LinearGradient>
 
       {/* Delivery location bar */}
       <Pressable testID="location-bar" onPress={requestGps} style={styles.locBar} disabled={requesting}>
@@ -210,7 +215,12 @@ export default function CustomerHome() {
                 onPress={() => !isOut && router.push(`/(customer)/restaurant/${item.id}`)}
                 style={({ pressed }) => [styles.card, pressed && !isOut && { opacity: 0.9 }, isOut && styles.cardDisabled]}
               >
-                <Image source={{ uri: item.image_url }} style={styles.cardImg} contentFit="cover" />
+                <View>
+                  <Image source={{ uri: item.image_url }} style={styles.cardImg} contentFit="cover" />
+                  {item.logo_url ? (
+                    <Image source={{ uri: item.logo_url }} style={styles.cardLogo} contentFit="cover" />
+                  ) : null}
+                </View>
                 <View style={styles.cardBody}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.cardTitle, isOut && styles.dim]}>{item.name}</Text>
@@ -265,9 +275,10 @@ export default function CustomerHome() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.surface },
+  headerGradient: { paddingBottom: theme.spacing.sm },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.md },
   headerHello: { color: theme.colors.onSurfaceSecondary, fontSize: theme.font.base },
-  headerTitle: { fontSize: theme.font.xxl, fontWeight: '800', color: theme.colors.brandDark },
+  headerTitle: { fontSize: theme.font.xxxl, fontWeight: '900', color: theme.colors.brandDark, letterSpacing: -0.5 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.colors.brandTertiary, paddingHorizontal: theme.spacing.md, paddingVertical: 6, borderRadius: theme.radius.pill },
   badgeTxt: { color: theme.colors.brandDark, fontWeight: '700', fontSize: theme.font.sm },
   locBar: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginHorizontal: theme.spacing.lg, marginBottom: theme.spacing.sm, backgroundColor: theme.colors.brandTertiary, paddingHorizontal: theme.spacing.md, paddingVertical: 8, borderRadius: theme.radius.md },
@@ -301,6 +312,7 @@ const styles = StyleSheet.create({
   card: { flexDirection: 'row', backgroundColor: theme.colors.surface, borderRadius: theme.radius.lg, overflow: 'hidden', marginHorizontal: theme.spacing.lg, borderWidth: 1, borderColor: theme.colors.divider },
   cardDisabled: { opacity: 0.6 },
   cardImg: { width: 100, height: 100 },
+  cardLogo: { position: 'absolute', left: 6, bottom: 6, width: 30, height: 30, borderRadius: 15, borderWidth: 2, borderColor: '#fff', backgroundColor: '#fff' },
   cardBody: { flex: 1, padding: theme.spacing.md, flexDirection: 'row', alignItems: 'center' },
   cardTitle: { fontSize: theme.font.lg, fontWeight: '700', color: theme.colors.onSurface },
   cardCuisine: { fontSize: theme.font.sm, color: theme.colors.onSurfaceSecondary, marginTop: 2 },

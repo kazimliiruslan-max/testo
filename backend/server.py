@@ -157,6 +157,7 @@ class Restaurant(BaseModel):
     subscription_active: bool = True
     is_featured: bool = False
     featured_tagline: str = ""
+    logo_url: str = ""
     created_at: str
 
 class RestaurantCreate(BaseModel):
@@ -180,6 +181,8 @@ class RestaurantUpdate(BaseModel):
     lng: Optional[float] = None
     delivery_minutes: Optional[int] = None
     delivery_radius_km: Optional[float] = None
+    logo_url: Optional[str] = None
+    logo_base64: Optional[str] = None
 
 class MenuItem(BaseModel):
     id: str
@@ -470,7 +473,13 @@ async def get_restaurant(rid: str):
 
 @api_router.put("/restaurants/me", response_model=Restaurant)
 async def update_my_restaurant(data: RestaurantUpdate, user: dict = Depends(require_roles('restaurant_owner'))):
-    update = {k: v for k, v in data.dict().items() if v is not None}
+    update = {k: v for k, v in data.dict().items() if v is not None and k not in ('logo_base64',)}
+    # If a base64 logo was uploaded, wrap into data URL and store as logo_url
+    if data.logo_base64:
+        b64 = data.logo_base64
+        if not b64.startswith('data:'):
+            b64 = f'data:image/jpeg;base64,{b64}'
+        update['logo_url'] = b64
     if update:
         await db.restaurants.update_one({'id': user['restaurant_id']}, {'$set': update})
     doc = await db.restaurants.find_one({'id': user['restaurant_id']}, {'_id': 0})

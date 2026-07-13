@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { api } from '@/src/api/client';
 import { useAuth } from '@/src/context/AuthContext';
@@ -25,11 +26,28 @@ export default function CustomerProfile() {
   const [showRestSettings, setShowRestSettings] = useState(false);
   const [restInfo, setRestInfo] = useState<any>(null);
   const [radiusInput, setRadiusInput] = useState('');
+  const [logoBase64, setLogoBase64] = useState<string | null>(null);
+  const [pickingLogo, setPickingLogo] = useState(false);
   const [savingRest, setSavingRest] = useState(false);
+
+  const pickLogo = async () => {
+    setPickingLogo(true);
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) return;
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.6, base64: true, allowsEditing: true, aspect: [1, 1],
+      });
+      if (res.canceled || !res.assets?.[0]?.base64) return;
+      setLogoBase64(res.assets[0].base64!);
+    } finally { setPickingLogo(false); }
+  };
 
   const openRestSettings = async () => {
     setShowRestSettings(true);
     setRestInfo(null);
+    setLogoBase64(null);
     try {
       const r = await api.get('/restaurants/me/info');
       setRestInfo(r.data);
@@ -42,7 +60,9 @@ export default function CustomerProfile() {
     if (isNaN(val) || val <= 0) return;
     setSavingRest(true);
     try {
-      await api.put('/restaurants/me', { delivery_radius_km: val });
+      const body: any = { delivery_radius_km: val };
+      if (logoBase64) body.logo_base64 = logoBase64;
+      await api.put('/restaurants/me', body);
       setShowRestSettings(false);
     } catch {}
     finally { setSavingRest(false); }
@@ -249,6 +269,26 @@ export default function CustomerProfile() {
                   <Text style={{ color: theme.colors.onSurfaceSecondary, marginBottom: theme.spacing.sm }}>
                     {restInfo.name}
                   </Text>
+                  <Text style={{ fontSize: theme.font.sm, color: theme.colors.onSurfaceTertiary, fontWeight: '700', marginTop: theme.spacing.md, textTransform: 'uppercase' }}>
+                    {t('restaurantLogo')}
+                  </Text>
+                  <View style={styles.logoRow}>
+                    <View style={styles.logoPreview}>
+                      {(logoBase64 || restInfo.logo_url) ? (
+                        <Image
+                          source={{ uri: logoBase64 ? `data:image/jpeg;base64,${logoBase64}` : restInfo.logo_url }}
+                          style={{ width: 64, height: 64, borderRadius: 32 }}
+                        />
+                      ) : (
+                        <Ionicons name="storefront" size={28} color={theme.colors.brandDark} />
+                      )}
+                    </View>
+                    <Pressable testID="pick-logo-btn" onPress={pickLogo} disabled={pickingLogo} style={styles.pickLogoBtn}>
+                      {pickingLogo
+                        ? <ActivityIndicator color={theme.colors.brand} />
+                        : <><Ionicons name="cloud-upload-outline" size={18} color={theme.colors.brand} /><Text style={styles.pickLogoTxt}>{t('uploadLogo')}</Text></>}
+                    </Pressable>
+                  </View>
                   <Text style={{ fontSize: theme.font.sm, color: theme.colors.onSurfaceTertiary, fontWeight: '700', marginTop: theme.spacing.md }}>
                     {t('deliveryRadiusKm').toUpperCase()}
                   </Text>
@@ -329,4 +369,8 @@ const styles = StyleSheet.create({
   addrLabel: { fontWeight: '800', color: theme.colors.onSurface, fontSize: theme.font.base },
   addrLine: { color: theme.colors.onSurfaceSecondary, fontSize: theme.font.sm, marginTop: 2 },
   delBtn: { padding: 6 },
+  logoRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, marginTop: theme.spacing.sm },
+  logoPreview: { width: 64, height: 64, borderRadius: 32, backgroundColor: theme.colors.brandTertiary, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  pickLogoBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.brand, borderStyle: 'dashed' },
+  pickLogoTxt: { color: theme.colors.brand, fontWeight: '700' },
 });

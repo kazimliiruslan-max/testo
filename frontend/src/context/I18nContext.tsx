@@ -6,7 +6,7 @@ type Lang = 'en' | 'tr';
 const strings = {
   en: {
     // Auth
-    welcome: 'Welcome to DirectDine',
+    welcome: 'Welcome to EasYum',
     subtitle: '0% commission — pay at the door',
     login: 'Login',
     register: 'Register',
@@ -174,9 +174,11 @@ const strings = {
     previousPeriod: 'Previous period',
     orders: 'orders',
     topItem: 'Top item',
+    restaurantLogo: 'Restaurant logo',
+    uploadLogo: 'Upload logo',
   },
   tr: {
-    welcome: 'DirectDine\'e Hoş Geldiniz',
+    welcome: 'EasYum\'a Hoş Geldiniz',
     subtitle: '%0 komisyon — kapıda ödeme',
     login: 'Giriş',
     register: 'Kayıt Ol',
@@ -335,6 +337,8 @@ const strings = {
     previousPeriod: 'Önceki dönem',
     orders: 'sipariş',
     topItem: 'En popüler',
+    restaurantLogo: 'Restoran logosu',
+    uploadLogo: 'Logo yükle',
   },
 };
 
