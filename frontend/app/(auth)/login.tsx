@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/src/context/AuthContext';
 import { useI18n } from '@/src/context/I18nContext';
+import { formatApiError } from '@/src/api/client';
 import { theme } from '@/src/theme';
 
 export default function LoginScreen() {
@@ -29,7 +30,7 @@ export default function LoginScreen() {
       else if (u.role === 'restaurant_owner') router.replace('/(owner)/dashboard');
       else router.replace('/(courier)/deliveries');
     } catch (e: any) {
-      setErr(e?.response?.data?.detail || t('invalidCredentials'));
+      setErr(formatApiError(e, t('invalidCredentials')));
     } finally {
       setLoading(false);
     }

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TextInput, Pressable, ActivityIndicator, Keyboa
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { api, saveToken } from '@/src/api/client';
+import { api, saveToken, formatApiError } from '@/src/api/client';
 import { useAuth } from '@/src/context/AuthContext';
 import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
@@ -25,7 +25,7 @@ export default function InviteAccept() {
         const res = await api.get(`/couriers/invite/${token}`);
         setInfo(res.data);
       } catch (e: any) {
-        setErr(e?.response?.data?.detail || t('inviteInvalid'));
+        setErr(formatApiError(e, t('inviteInvalid')));
       } finally {
         setLoading(false);
       }
@@ -42,7 +42,7 @@ export default function InviteAccept() {
       await refresh();
       router.replace('/(courier)/deliveries');
     } catch (e: any) {
-      setErr(e?.response?.data?.detail || t('error'));
+      setErr(formatApiError(e, t('error')));
     } finally {
       setSaving(false);
     }

@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { api, saveToken } from '@/src/api/client';
+import { api, saveToken, formatApiError } from '@/src/api/client';
 import { useAuth } from '@/src/context/AuthContext';
 import { useCart } from '@/src/context/CartContext';
 import { useI18n } from '@/src/context/I18nContext';
@@ -128,7 +128,7 @@ export default function Cart() {
       clear();
       router.replace(`/(customer)/tracking/${orderId}`);
     } catch (e: any) {
-      setErr(e?.response?.data?.detail || t('error'));
+      setErr(formatApiError(e, t('error')));
     } finally {
       setPlacing(false);
     }

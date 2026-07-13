@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { api } from '@/src/api/client';
+import { api, formatApiError } from '@/src/api/client';
 import { useAuth } from '@/src/context/AuthContext';
 import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
@@ -100,7 +100,7 @@ export default function CustomerProfile() {
       setShowRestaurantSetup(false);
       router.replace('/(owner)/dashboard');
     } catch (e: any) {
-      setErr(e?.response?.data?.detail || t('error'));
+      setErr(formatApiError(e, t('error')));
     } finally {
       setSaving(false);
     }

@@ -45,3 +45,31 @@ api.interceptors.request.use(async (config) => {
   }
   return config;
 });
+
+/**
+ * Normalizes API errors into a human-readable string.
+ * Handles FastAPI 422 (detail is an array of {loc,msg,...}) as well as plain string detail.
+ */
+export function formatApiError(e: any, fallback = 'Something went wrong'): string {
+  const d = e?.response?.data?.detail;
+  if (!d) {
+    if (typeof e?.message === 'string' && e.message) return e.message;
+    return fallback;
+  }
+  if (typeof d === 'string') return d;
+  if (Array.isArray(d)) {
+    // Pydantic error list — pick the first user-friendly message
+    const first = d[0];
+    if (first && typeof first === 'object') {
+      const loc = Array.isArray(first.loc) ? first.loc.filter((x: any) => x !== 'body').join('.') : '';
+      const msg = String(first.msg || '').replace(/^value is not a valid /i, 'invalid ');
+      return loc ? `${loc}: ${msg}` : msg || fallback;
+    }
+    return fallback;
+  }
+  if (typeof d === 'object') {
+    // Occasionally detail is a single dict
+    return String(d.msg || d.message || fallback);
+  }
+  return fallback;
+}

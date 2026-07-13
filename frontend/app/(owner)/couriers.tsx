@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect } from 'expo-router';
-import { api } from '@/src/api/client';
+import { api, formatApiError } from '@/src/api/client';
 import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
 
@@ -36,7 +36,7 @@ export default function OwnerCouriers() {
       setInviteResult(res.data);
       setShow(false);
       setForm({ email: '', name: '', phone: '' });
-    } catch (e: any) { setErr(e?.response?.data?.detail || 'Error'); }
+    } catch (e: any) { setErr(formatApiError(e, 'Error')); }
     finally { setSaving(false); }
   };
 

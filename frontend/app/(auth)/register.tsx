@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth, Role } from '@/src/context/AuthContext';
 import { useI18n } from '@/src/context/I18nContext';
+import { formatApiError } from '@/src/api/client';
 import { theme } from '@/src/theme';
 
 export default function RegisterScreen() {
@@ -41,7 +42,7 @@ export default function RegisterScreen() {
       if (u.role === 'customer') router.replace('/(customer)/home');
       else router.replace('/(owner)/dashboard');
     } catch (e: any) {
-      setErr(e?.response?.data?.detail || t('error'));
+      setErr(formatApiError(e, t('error')));
     } finally {
       setLoading(false);
     }
