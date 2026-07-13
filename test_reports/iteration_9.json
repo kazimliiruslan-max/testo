@@ -1,0 +1,50 @@
+{
+  "summary": "DirectDine iter9 tested (backend + frontend). Backend: 11 new iter9 tests + 92 regression = 103/103 PASS. Verified (a) owner login + /auth/me returns role='restaurant_owner', (b) PUT /restaurants/me with min_order_value=200 & delivery_radius_km=6 persists and reflects in GET /restaurants/me/info, (c) delivery_radius_km=0 → 422 (Field gt=0), (d) POST /menu with price=100/delivery_fee_pct=25 returns display_price=125 both in POST response and in public GET /restaurants/{id}/menu, (e) POST /restaurants/me/campaign/start → campaign_active=true with campaign_ends_at ~3 days ahead (verified via delta 2d23h < Δ < 3d1h); menu returns display_price==price during campaign; campaign/stop reverses it, (f) POST /orders below min_order_value=200 → 400 with 'Minimum order value' text; at/above succeeds and creates order, (g) POST /admin/cleanup-junk-restaurants is idempotent (2nd call returns deleted=0). Frontend: guest home loads with no crash — Sign-In pill (home-signin-btn) visible, cuisine chips render with emoji+label from array-of-objects, Featured/Popular/Deals rails all render. Sign-In → /login → login as owner1 routes to /(owner)/dashboard (no register loop). Customer flow: with min_order=500 set for Bella Napoli, restaurant screen shows 'Min order: ₺500.00' pill; adding cheap Caesar Salad and going to cart shows red banner 'Add ₺455.00 more to reach the minimum order' and Place Order button is aria-disabled=true with opacity 0.5. CRITICAL FRONTEND BUG FOUND (not fixed): during campaign, menu on customer restaurant screen does NOT show strike-through of the fee-inclusive price. The logic in /app/frontend/app/(customer)/restaurant/[id].tsx:107 is inverted: `hasDiscount = display_price < price` — but display_price is either == price (campaign) or > price (normal), so this branch never fires.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "CustomerRestaurantDetail (/app/frontend/app/(customer)/restaurant/[id].tsx line 106-117)",
+        "issue": "Strike-through 'discount' price never renders during campaign. Current logic `hasDiscount = item.display_price != null && item.display_price < item.price` is inverted — display_price is always >= price (fee-inclusive when no campaign; equal to price during campaign), so the condition never becomes true. Fix: compute the fee-inclusive original price on the client and strike-through it when campaign is active, e.g. `const original = item.price * (1 + (item.delivery_fee_pct||0)/100); const hasDiscount = original > item.display_price + 0.01;` and render `<Text style={menuPriceOld}>₺{original.toFixed(2)}</Text>`.",
+        "testID": "add-item-<id>",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Cart (/app/frontend/app/(customer)/cart.tsx)",
+        "issues": [
+          "Saved-address chip rail can show duplicate 'Home' entries (leftover from prior test iterations). Consider dedup or add a delete affordance directly on the chip."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_directdine_iter9.py",
+    "/app/test_reports/pytest/pytest_iter9.xml"
+  ],
+  "action_items": [
+    "Fix strike-through discount rendering in /app/frontend/app/(customer)/restaurant/[id].tsx (see ui_bugs above). Requires MenuItem interface on the client to include delivery_fee_pct and campaign_active info (from the restaurant), OR just compute originalPrice = price*(1+fee/100) and compare > display_price.",
+    "Optionally add a small 'Campaign live · 3-day discount' badge on customer restaurant header when restaurant.campaign_active is true.",
+    "Consider dedup of duplicate saved addresses ('Home','Home','Home') on customer cart screen."
+  ],
+  "critical_code_review_comments": [
+    "server.py:605-608 _compute_display_price is correct: during campaign returns base; otherwise base*(1+fee/100). Contract is consistent between POST /menu response and GET /restaurants/{rid}/menu.",
+    "server.py:465-468 auto-deactivates expired campaigns on the /restaurants list endpoint — good self-healing.",
+    "server.py:157/176/188/189 Field constraints correctly reject delivery_radius_km<=0 (gt=0) and min_order_value<0 (ge=0). Verified via 422 test.",
+    "server.py:882-892 (create_order) and 850-856 (create_order_as_guest) both enforce min_order_value with matching detail message — good parity.",
+    "Frontend restaurant/[id].tsx line 106-117: hasDiscount logic is inverted (see ui_bugs).",
+    "server.py has grown to 1334 lines — carry-over recommendation to split into routers."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_directdine_iter9.py (new)"
+  ],
+  "success_rate": {"backend": "100% (103/103, incl. 11 new iter9)", "frontend": "90% (min-order flow, sign-in, cuisine chips, owner login all OK; campaign strike-through broken)"},
+  "seed_data_creation": "One TEST_iter9_FeeItem created via API to validate campaign strike-through visually — deleted before finishing. All test-created orders were cancelled or filtered via /admin/cleanup-junk. min_order_value and delivery_radius_km on Bella Napoli restored to 0 and 4.0 respectively at teardown.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend endpoints for iter9 are stable. If iter10 tests campaign strike-through UI: (1) log in as owner1, (2) POST /menu with delivery_fee_pct=25, (3) POST /restaurants/me/campaign/start, (4) load /restaurant/<owner1-restaurant-id> as customer, (5) expect a strike-through of the fee-inclusive price (base*(1+fee/100)) next to the bold display_price. Owner1 restaurant id can change per environment — always fetch via GET /restaurants/me/info. Login testID is `login-submit-button` (not login-submit-btn).",
+  "rca_of_issue": "Campaign strike-through never renders because the client compares display_price to price. Since server contract is display_price == price during campaign and display_price = price*(1+fee/100) otherwise, `display_price < price` is impossible. The client must instead compute the fee-inclusive 'original' price locally using delivery_fee_pct (already returned by the API on MenuItem) and strike THAT when it's greater than the current display_price."
+}

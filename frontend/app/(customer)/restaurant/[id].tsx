@@ -75,6 +75,14 @@ export default function RestaurantDetail() {
 
         <View style={styles.body}>
           {restaurant.description ? <Text style={styles.desc}>{restaurant.description}</Text> : null}
+          {restaurant.min_order_value > 0 && (
+            <View style={styles.minOrderPill}>
+              <Ionicons name="wallet-outline" size={14} color={theme.colors.brandDark} />
+              <Text style={styles.minOrderPillTxt}>
+                {t('minOrderRestaurant')}: ₺{restaurant.min_order_value.toFixed(2)}
+              </Text>
+            </View>
+          )}
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
             {categories.map((c) => (
@@ -94,19 +102,27 @@ export default function RestaurantDetail() {
             keyExtractor={(m) => m.id}
             scrollEnabled={false}
             ItemSeparatorComponent={() => <View style={{ height: theme.spacing.md }} />}
-            renderItem={({ item }) => (
+            renderItem={({ item }) => {
+              const shownPrice = item.display_price ?? item.price;
+              const hasDiscount = item.display_price != null && item.display_price < item.price;
+              return (
               <View style={styles.menuItem}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.menuName}>{item.name}</Text>
                   <Text style={styles.menuDesc}>{item.description}</Text>
-                  <Text style={styles.menuPrice}>₺{item.price.toFixed(2)}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: theme.spacing.xs }}>
+                    <Text style={styles.menuPrice}>₺{shownPrice.toFixed(2)}</Text>
+                    {hasDiscount && (
+                      <Text style={styles.menuPriceOld}>₺{item.price.toFixed(2)}</Text>
+                    )}
+                  </View>
                 </View>
                 <Pressable
                   testID={`add-item-${item.id}`}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                     add(restaurant.id, restaurant.name, {
-                      menu_item_id: item.id, name: item.name, price: item.price,
+                      menu_item_id: item.id, name: item.name, price: shownPrice,
                     });
                   }}
                   style={styles.addBtn}
@@ -114,7 +130,8 @@ export default function RestaurantDetail() {
                   <Ionicons name="add" size={22} color={theme.colors.onBrand} />
                 </Pressable>
               </View>
-            )}
+              );
+            }}
           />
         </View>
       </ScrollView>
@@ -161,7 +178,10 @@ const styles = StyleSheet.create({
   menuItem: { flexDirection: 'row', gap: theme.spacing.md, alignItems: 'center', backgroundColor: theme.colors.surfaceSecondary, padding: theme.spacing.md, borderRadius: theme.radius.md },
   menuName: { fontSize: theme.font.lg, fontWeight: '700', color: theme.colors.onSurface },
   menuDesc: { fontSize: theme.font.sm, color: theme.colors.onSurfaceSecondary, marginTop: 2 },
-  menuPrice: { fontSize: theme.font.base, fontWeight: '700', color: theme.colors.brand, marginTop: theme.spacing.xs },
+  menuPrice: { fontSize: theme.font.base, fontWeight: '700', color: theme.colors.brand },
+  menuPriceOld: { fontSize: theme.font.sm, color: theme.colors.onSurfaceTertiary, textDecorationLine: 'line-through' },
+  minOrderPill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.colors.brandTertiary, paddingHorizontal: theme.spacing.md, paddingVertical: 4, borderRadius: theme.radius.pill, marginBottom: theme.spacing.md },
+  minOrderPillTxt: { color: theme.colors.brandDark, fontWeight: '700', fontSize: theme.font.sm },
   addBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.brand, alignItems: 'center', justifyContent: 'center' },
   cartBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: theme.colors.surface, borderTopWidth: 1, borderTopColor: theme.colors.divider, padding: theme.spacing.md },
   cartBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.brand, borderRadius: theme.radius.pill, paddingHorizontal: theme.spacing.lg, height: 54, gap: theme.spacing.md },

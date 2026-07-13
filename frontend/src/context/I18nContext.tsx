@@ -176,6 +176,11 @@ const strings = {
     topItem: 'Top item',
     restaurantLogo: 'Restaurant logo',
     uploadLogo: 'Upload logo',
+    minOrderValue: 'Minimum order (₺)',
+    minOrderHelp: 'Customers must reach this total to check out. Set 0 for no minimum.',
+    minOrderNotMet: 'Add {amount} more to reach the minimum order',
+    minOrderRestaurant: 'Min order',
+    hiddenFeeHint: 'Prices already include delivery fee',
   },
   tr: {
     welcome: 'EasYum\'a Hoş Geldiniz',
@@ -339,6 +344,11 @@ const strings = {
     topItem: 'En popüler',
     restaurantLogo: 'Restoran logosu',
     uploadLogo: 'Logo yükle',
+    minOrderValue: 'Minimum sipariş (₺)',
+    minOrderHelp: 'Müşteriler ödemeye geçebilmek için bu tutara ulaşmalıdır. Minimum yok için 0 girin.',
+    minOrderNotMet: 'Minimum tutara ulaşmak için {amount} daha ekleyin',
+    minOrderRestaurant: 'Min. sipariş',
+    hiddenFeeHint: 'Fiyatlara teslimat ücreti dahildir',
   },
 };
 

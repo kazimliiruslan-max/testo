@@ -20,10 +20,20 @@ interface Restaurant {
   is_featured: boolean; featured_tagline: string;
   distance_km?: number | null; in_range?: boolean;
   delivery_radius_km: number;
+  logo_url?: string;
+  campaign_active?: boolean;
+  order_count?: number;
+  min_order_value?: number;
 }
 
 const { width: SCREEN_W } = Dimensions.get('window');
-const CUISINES = ['All', 'Pizza', 'Burgers', 'Sushi', 'Other'];
+const CUISINES: { label: string; emoji: string }[] = [
+  { label: 'All', emoji: '🍽️' },
+  { label: 'Pizza', emoji: '🍕' },
+  { label: 'Burgers', emoji: '🍔' },
+  { label: 'Sushi', emoji: '🍣' },
+  { label: 'Other', emoji: '✨' },
+];
 
 export default function CustomerHome() {
   const router = useRouter();
@@ -62,6 +72,8 @@ export default function CustomerHome() {
     return cuisineOk && searchOk;
   });
   const featured = inRange.filter((r) => r.is_featured);
+  const deals = inRange.filter((r) => r.campaign_active);
+  const popular = [...inRange].sort((a, b) => (b.order_count || 0) - (a.order_count || 0)).slice(0, 6);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -74,10 +86,21 @@ export default function CustomerHome() {
             <Text style={styles.headerHello}>{user ? `Hi, ${user.name.split(' ')[0]} 👋` : 'Hi there 👋'}</Text>
             <Text style={styles.headerTitle}>EasYum</Text>
           </View>
-          <View style={styles.badge}>
-            <Ionicons name="leaf" size={14} color={theme.colors.brandDark} />
-            <Text style={styles.badgeTxt}>{t('noCommission')}</Text>
-          </View>
+          {user ? (
+            <View style={styles.badge}>
+              <Ionicons name="leaf" size={14} color={theme.colors.brandDark} />
+              <Text style={styles.badgeTxt}>{t('noCommission')}</Text>
+            </View>
+          ) : (
+            <Pressable
+              testID="home-signin-btn"
+              onPress={() => router.push('/(auth)/login')}
+              style={styles.signInBtn}
+            >
+              <Ionicons name="log-in-outline" size={16} color="#fff" />
+              <Text style={styles.signInBtnTxt}>{t('signIn')}</Text>
+            </Pressable>
+          )}
         </View>
       </LinearGradient>
 
@@ -174,6 +197,69 @@ export default function CustomerHome() {
                 </>
               )}
 
+              {popular.length > 0 && (
+                <>
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>🔥 Popular near you</Text>
+                  </View>
+                  <FlatList
+                    testID="popular-carousel"
+                    data={popular}
+                    keyExtractor={(r) => 'p-' + r.id}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, gap: theme.spacing.md }}
+                    renderItem={({ item }) => (
+                      <Pressable
+                        testID={`popular-card-${item.id}`}
+                        onPress={() => router.push(`/(customer)/restaurant/${item.id}`)}
+                        style={styles.popCard}
+                      >
+                        <Image source={{ uri: item.image_url }} style={styles.popImg} contentFit="cover" />
+                        <View style={{ padding: theme.spacing.sm }}>
+                          <Text style={styles.popName} numberOfLines={1}>{item.name}</Text>
+                          <Text style={styles.popMeta}>⭐ {item.rating.toFixed(1)} · {item.delivery_minutes}m</Text>
+                        </View>
+                      </Pressable>
+                    )}
+                  />
+                </>
+              )}
+
+              {deals.length > 0 && (
+                <>
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>⚡ Deals · limited time</Text>
+                    <View style={styles.dealsTag}><Text style={styles.dealsTagTxt}>LIVE</Text></View>
+                  </View>
+                  <FlatList
+                    testID="deals-carousel"
+                    data={deals}
+                    keyExtractor={(r) => 'd-' + r.id}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, gap: theme.spacing.md }}
+                    renderItem={({ item }) => (
+                      <Pressable
+                        testID={`deal-card-${item.id}`}
+                        onPress={() => router.push(`/(customer)/restaurant/${item.id}`)}
+                        style={styles.dealCard}
+                      >
+                        <Image source={{ uri: item.image_url }} style={styles.popImg} contentFit="cover" />
+                        <View style={styles.dealBadge}>
+                          <Ionicons name="flash" size={12} color="#fff" />
+                          <Text style={styles.dealBadgeTxt}>Deal</Text>
+                        </View>
+                        <View style={{ padding: theme.spacing.sm }}>
+                          <Text style={styles.popName} numberOfLines={1}>{item.name}</Text>
+                          <Text style={styles.popMeta}>Free delivery · ends soon</Text>
+                        </View>
+                      </Pressable>
+                    )}
+                  />
+                </>
+              )}
+
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -182,13 +268,13 @@ export default function CustomerHome() {
               >
                 {CUISINES.map((c) => (
                   <Pressable
-                    key={c}
-                    testID={`cuisine-chip-${c}`}
-                    onPress={() => setCuisine(c)}
-                    style={[styles.chip, cuisine === c && styles.chipActive]}
+                    key={c.label}
+                    testID={`cuisine-chip-${c.label}`}
+                    onPress={() => setCuisine(c.label)}
+                    style={[styles.chip, cuisine === c.label && styles.chipActive]}
                   >
-                    <Text style={[styles.chipTxt, cuisine === c && styles.chipTxtActive]}>
-                      {c === 'All' ? t('allCuisines') : c}
+                    <Text style={[styles.chipTxt, cuisine === c.label && styles.chipTxtActive]}>
+                      {c.emoji}  {c.label === 'All' ? t('allCuisines') : c.label}
                     </Text>
                   </Pressable>
                 ))}
@@ -281,6 +367,8 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: theme.font.xxxl, fontWeight: '900', color: theme.colors.brandDark, letterSpacing: -0.5 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.colors.brandTertiary, paddingHorizontal: theme.spacing.md, paddingVertical: 6, borderRadius: theme.radius.pill },
   badgeTxt: { color: theme.colors.brandDark, fontWeight: '700', fontSize: theme.font.sm },
+  signInBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.colors.brand, paddingHorizontal: theme.spacing.md, paddingVertical: 8, borderRadius: theme.radius.pill },
+  signInBtnTxt: { color: '#fff', fontWeight: '800', fontSize: theme.font.sm },
   locBar: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginHorizontal: theme.spacing.lg, marginBottom: theme.spacing.sm, backgroundColor: theme.colors.brandTertiary, paddingHorizontal: theme.spacing.md, paddingVertical: 8, borderRadius: theme.radius.md },
   locBarTxt: { flex: 1, color: theme.colors.brandDark, fontWeight: '600', fontSize: theme.font.sm },
   searchWrap: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginHorizontal: theme.spacing.lg, backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md, paddingHorizontal: theme.spacing.lg, height: 44, marginBottom: theme.spacing.sm },
@@ -300,6 +388,15 @@ const styles = StyleSheet.create({
   featuredMeta: { flexDirection: 'row', gap: theme.spacing.sm, marginTop: 6 },
   featuredChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: theme.spacing.sm, paddingVertical: 3, borderRadius: theme.radius.pill },
   featuredChipTxt: { color: '#fff', fontSize: theme.font.sm, fontWeight: '600' },
+  popCard: { width: 160, borderRadius: theme.radius.md, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.divider, overflow: 'hidden' },
+  popImg: { width: '100%', height: 90 },
+  popName: { fontWeight: '700', color: theme.colors.onSurface, fontSize: theme.font.base },
+  popMeta: { color: theme.colors.onSurfaceSecondary, fontSize: theme.font.sm, marginTop: 2 },
+  dealCard: { width: 200, borderRadius: theme.radius.md, backgroundColor: theme.colors.brandTertiary, borderWidth: 1, borderColor: theme.colors.brand, overflow: 'hidden', position: 'relative' },
+  dealBadge: { position: 'absolute', top: 8, left: 8, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: theme.colors.brand, paddingHorizontal: 8, paddingVertical: 3, borderRadius: theme.radius.pill },
+  dealBadgeTxt: { color: '#fff', fontWeight: '800', fontSize: 11 },
+  dealsTag: { backgroundColor: theme.colors.error, paddingHorizontal: 8, paddingVertical: 3, borderRadius: theme.radius.pill },
+  dealsTagTxt: { color: '#fff', fontWeight: '800', fontSize: 10, letterSpacing: 1 },
   chipsStrip: { maxHeight: 56, marginTop: theme.spacing.md },
   chipsRow: { paddingHorizontal: theme.spacing.lg, gap: theme.spacing.sm, alignItems: 'center' },
   chip: { flexShrink: 0, height: 36, paddingHorizontal: theme.spacing.lg, borderRadius: theme.radius.pill, borderWidth: 1, borderColor: theme.colors.border, justifyContent: 'center', backgroundColor: theme.colors.surface },

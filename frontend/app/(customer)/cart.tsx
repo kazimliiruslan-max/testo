@@ -28,6 +28,7 @@ export default function Cart() {
   const [notes, setNotes] = useState('');
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [saveLabel, setSaveLabel] = useState<string | null>(null); // null means don't save
+  const [minOrderValue, setMinOrderValue] = useState(0);
   // Guest fields
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
@@ -38,7 +39,16 @@ export default function Cart() {
 
   const isGuest = !user;
   const fullAddress = pickedLoc ? `${pickedLoc.address}${addressExtra ? ` — ${addressExtra}` : ''}` : '';
-  const canPlace = !!pickedLoc && (!isGuest || (name && email && phone && password));
+  const meetsMinOrder = minOrderValue <= 0 || total >= minOrderValue;
+  const canPlace = !!pickedLoc && meetsMinOrder && (!isGuest || (name && email && phone && password));
+
+  useEffect(() => {
+    if (restaurantId) {
+      api.get(`/restaurants/${restaurantId}`)
+        .then((r) => setMinOrderValue(Number(r.data?.min_order_value || 0)))
+        .catch(() => setMinOrderValue(0));
+    }
+  }, [restaurantId]);
 
   useEffect(() => {
     if (user?.role === 'customer') {
@@ -274,6 +284,14 @@ export default function Cart() {
 
         {items.length > 0 && (
           <SafeAreaView edges={['bottom']} style={styles.footer}>
+            {!meetsMinOrder && (
+              <View style={styles.minOrderWarn}>
+                <Ionicons name="alert-circle" size={18} color={theme.colors.error} />
+                <Text style={styles.minOrderWarnTxt}>
+                  {t('minOrderNotMet').replace('{amount}', `₺${(minOrderValue - total).toFixed(2)}`)}
+                </Text>
+              </View>
+            )}
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>{t('total')}</Text>
               <Text style={styles.totalVal}>₺{total.toFixed(2)}</Text>
@@ -335,4 +353,6 @@ const styles = StyleSheet.create({
   labelChipActive: { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
   labelChipTxt: { color: theme.colors.onSurface, fontWeight: '600' },
   labelChipTxtActive: { color: '#fff' },
+  minOrderWarn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFEAEA', padding: theme.spacing.sm, borderRadius: theme.radius.md, marginBottom: theme.spacing.sm },
+  minOrderWarnTxt: { flex: 1, color: theme.colors.error, fontWeight: '700', fontSize: theme.font.sm },
 });

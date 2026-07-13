@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, Modal, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,10 +37,11 @@ export default function OwnerMenu() {
     try {
       await api.post('/menu', {
         name: form.name, description: form.description, price: parseFloat(form.price),
+        delivery_fee_pct: parseFloat(form.delivery_fee_pct || '0'),
         category: form.category, image_url: form.image_url || undefined, image_base64: form.image_base64 || undefined,
       });
       setShowAdd(false);
-      setForm({ name: '', description: '', price: '', category: 'Main', image_url: '', image_base64: '' });
+      setForm({ name: '', description: '', price: '', delivery_fee_pct: '0', category: 'Main', image_url: '', image_base64: '' });
       load();
     } finally {
       setSaving(false);
@@ -116,6 +117,12 @@ export default function OwnerMenu() {
                 <TextInput testID="menu-name-input" style={styles.input} placeholder={t('itemName')} placeholderTextColor={theme.colors.onSurfaceTertiary} value={form.name} onChangeText={(v) => setForm({ ...form, name: v })} />
                 <TextInput testID="menu-desc-input" style={styles.input} placeholder={t('description')} placeholderTextColor={theme.colors.onSurfaceTertiary} value={form.description} onChangeText={(v) => setForm({ ...form, description: v })} />
                 <TextInput testID="menu-price-input" style={styles.input} placeholder={t('price')} placeholderTextColor={theme.colors.onSurfaceTertiary} keyboardType="decimal-pad" value={form.price} onChangeText={(v) => setForm({ ...form, price: v })} />
+                <TextInput testID="menu-fee-input" style={styles.input} placeholder="Delivery fee % (e.g. 10)" placeholderTextColor={theme.colors.onSurfaceTertiary} keyboardType="decimal-pad" value={form.delivery_fee_pct} onChangeText={(v) => setForm({ ...form, delivery_fee_pct: v })} />
+                {form.price && form.delivery_fee_pct && !isNaN(parseFloat(form.price)) && (
+                  <Text style={{ color: theme.colors.brandDark, fontWeight: '700', marginBottom: theme.spacing.sm }}>
+                    Customer will see: ₺{(parseFloat(form.price) * (1 + parseFloat(form.delivery_fee_pct || '0') / 100)).toFixed(2)}
+                  </Text>
+                )}
                 <TextInput testID="menu-category-input" style={styles.input} placeholder={t('category')} placeholderTextColor={theme.colors.onSurfaceTertiary} value={form.category} onChangeText={(v) => setForm({ ...form, category: v })} />
                 <TextInput testID="menu-image-input" style={styles.input} placeholder={t('imageUrl')} placeholderTextColor={theme.colors.onSurfaceTertiary} value={form.image_url} onChangeText={(v) => setForm({ ...form, image_url: v, image_base64: '' })} />
                 <Pressable testID="pick-image-btn" onPress={pickImage} style={styles.pickBtn} disabled={pickingImage}>

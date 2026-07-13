@@ -153,11 +153,15 @@ class Restaurant(BaseModel):
     lat: float = 41.0082
     lng: float = 28.9784
     delivery_minutes: int = 30
-    delivery_radius_km: float = 5.0
+    delivery_radius_km: float = Field(default=5.0, gt=0)
+    min_order_value: float = Field(default=0.0, ge=0)
     subscription_active: bool = True
     is_featured: bool = False
     featured_tagline: str = ""
     logo_url: str = ""
+    campaign_active: bool = False
+    campaign_ends_at: Optional[str] = None
+    order_count: int = 0
     created_at: str
 
 class RestaurantCreate(BaseModel):
@@ -169,7 +173,8 @@ class RestaurantCreate(BaseModel):
     lat: Optional[float] = 41.0082
     lng: Optional[float] = 28.9784
     delivery_minutes: Optional[int] = 30
-    delivery_radius_km: Optional[float] = 5.0
+    delivery_radius_km: Optional[float] = Field(default=5.0, gt=0)
+    min_order_value: Optional[float] = Field(default=0.0, ge=0)
 
 class RestaurantUpdate(BaseModel):
     name: Optional[str] = None
@@ -180,7 +185,8 @@ class RestaurantUpdate(BaseModel):
     lat: Optional[float] = None
     lng: Optional[float] = None
     delivery_minutes: Optional[int] = None
-    delivery_radius_km: Optional[float] = None
+    delivery_radius_km: Optional[float] = Field(default=None, gt=0)
+    min_order_value: Optional[float] = Field(default=None, ge=0)
     logo_url: Optional[str] = None
     logo_base64: Optional[str] = None
 
@@ -190,6 +196,8 @@ class MenuItem(BaseModel):
     name: str
     description: str = ""
     price: float
+    delivery_fee_pct: float = 0.0
+    display_price: float = 0.0
     category: str = "Main"
     image_url: str = ""
     available: bool = True
@@ -199,9 +207,10 @@ class MenuItemCreate(BaseModel):
     name: str
     description: Optional[str] = ""
     price: float
+    delivery_fee_pct: Optional[float] = 0.0
     category: Optional[str] = "Main"
     image_url: Optional[str] = ""
-    image_base64: Optional[str] = None  # optional data URL or raw base64
+    image_base64: Optional[str] = None
     available: Optional[bool] = True
 
 class CourierInfo(BaseModel):
@@ -452,6 +461,11 @@ async def list_restaurants(cuisine: Optional[str] = None, lat: Optional[float] =
     docs = await db.restaurants.find(q, {'_id': 0}).to_list(500)
     out: List[RestaurantWithDistance] = []
     for d in docs:
+        # Auto-deactivate expired campaigns
+        if d.get('campaign_active') and not _rest_campaign_active(d):
+            await db.restaurants.update_one({'id': d['id']}, {'$set': {'campaign_active': False, 'campaign_ends_at': None}})
+            d['campaign_active'] = False
+            d['campaign_ends_at'] = None
         rest = Restaurant(**d)
         entry = RestaurantWithDistance(**rest.dict())
         if lat is not None and lng is not None:
@@ -459,7 +473,6 @@ async def list_restaurants(cuisine: Optional[str] = None, lat: Optional[float] =
             entry.distance_km = round(dist, 2)
             entry.in_range = dist <= (rest.delivery_radius_km or 5.0)
         out.append(entry)
-    # Sort by in_range first, then by distance ascending; if no location given, keep DB order.
     if lat is not None and lng is not None:
         out.sort(key=lambda r: (not r.in_range, r.distance_km if r.distance_km is not None else 9e9))
     return out
@@ -490,6 +503,27 @@ async def get_my_restaurant(user: dict = Depends(require_roles('restaurant_owner
     doc = await db.restaurants.find_one({'id': user['restaurant_id']}, {'_id': 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Restaurant not found")
+    return Restaurant(**doc)
+
+
+@api_router.post("/restaurants/me/campaign/start", response_model=Restaurant)
+async def start_campaign(user: dict = Depends(require_roles('restaurant_owner'))):
+    from datetime import datetime, timedelta, timezone
+    ends = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
+    await db.restaurants.update_one(
+        {'id': user['restaurant_id']},
+        {'$set': {'campaign_active': True, 'campaign_ends_at': ends}}
+    )
+    doc = await db.restaurants.find_one({'id': user['restaurant_id']}, {'_id': 0})
+    return Restaurant(**doc)
+
+@api_router.post("/restaurants/me/campaign/stop", response_model=Restaurant)
+async def stop_campaign(user: dict = Depends(require_roles('restaurant_owner'))):
+    await db.restaurants.update_one(
+        {'id': user['restaurant_id']},
+        {'$set': {'campaign_active': False, 'campaign_ends_at': None}}
+    )
+    doc = await db.restaurants.find_one({'id': user['restaurant_id']}, {'_id': 0})
     return Restaurant(**doc)
 
 
@@ -556,14 +590,37 @@ async def owner_stats(period: str = 'month', user: dict = Depends(require_roles(
 
 
 # ---------- Menu Routes ----------
+def _rest_campaign_active(rest: dict) -> bool:
+    if not rest.get('campaign_active'):
+        return False
+    ends = rest.get('campaign_ends_at')
+    if not ends:
+        return True
+    try:
+        from datetime import datetime, timezone
+        return datetime.fromisoformat(ends) > datetime.now(timezone.utc)
+    except Exception:
+        return False
+
+def _compute_display_price(base: float, fee_pct: float, campaign_active: bool) -> float:
+    if campaign_active:
+        return round(base, 2)
+    return round(base * (1 + (fee_pct or 0.0) / 100.0), 2)
+
 @api_router.get("/restaurants/{rid}/menu", response_model=List[MenuItem])
 async def list_menu(rid: str):
+    rest = await db.restaurants.find_one({'id': rid}, {'_id': 0})
+    campaign = _rest_campaign_active(rest) if rest else False
     docs = await db.menu_items.find({'restaurant_id': rid}, {'_id': 0}).to_list(500)
-    return [MenuItem(**d) for d in docs]
+    out: List[MenuItem] = []
+    for d in docs:
+        item = MenuItem(**d)
+        item.display_price = _compute_display_price(item.price, item.delivery_fee_pct, campaign)
+        out.append(item)
+    return out
 
 @api_router.post("/menu", response_model=MenuItem)
 async def create_menu_item(data: MenuItemCreate, user: dict = Depends(require_roles('restaurant_owner'))):
-    # Prefer base64 image if provided (mobile picker → base64 data URL)
     img = data.image_url or ''
     if data.image_base64:
         b64 = data.image_base64
@@ -576,13 +633,17 @@ async def create_menu_item(data: MenuItemCreate, user: dict = Depends(require_ro
         'name': data.name,
         'description': data.description or '',
         'price': data.price,
+        'delivery_fee_pct': float(data.delivery_fee_pct or 0.0),
         'category': data.category or 'Main',
         'image_url': img,
         'available': data.available if data.available is not None else True,
         'created_at': now_iso(),
     }
     await db.menu_items.insert_one(item)
-    return MenuItem(**item)
+    rest = await db.restaurants.find_one({'id': user['restaurant_id']}, {'_id': 0})
+    obj = MenuItem(**item)
+    obj.display_price = _compute_display_price(obj.price, obj.delivery_fee_pct, _rest_campaign_active(rest or {}))
+    return obj
 
 @api_router.delete("/menu/{item_id}")
 async def delete_menu_item(item_id: str, user: dict = Depends(require_roles('restaurant_owner'))):
@@ -786,6 +847,13 @@ async def create_order_as_guest(data: GuestOrderCreate):
     rest = await db.restaurants.find_one({'id': data.restaurant_id}, {'_id': 0})
     if not rest:
         raise HTTPException(status_code=404, detail="Restaurant not found")
+    total = sum(i.price * i.quantity for i in data.items)
+    min_val = float(rest.get('min_order_value') or 0.0)
+    if min_val > 0 and total < min_val:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Minimum order value is ₺{min_val:.2f}. Add ₺{(min_val - total):.2f} more to check out.",
+        )
     user_id = str(uuid.uuid4())
     user_doc = {
         'id': user_id, 'email': data.email.lower(),
@@ -794,7 +862,6 @@ async def create_order_as_guest(data: GuestOrderCreate):
         'restaurant_id': None, 'created_at': now_iso(),
     }
     await db.users.insert_one(user_doc)
-    total = sum(i.price * i.quantity for i in data.items)
     ts = now_iso()
     order = {
         'id': str(uuid.uuid4()), 'customer_id': user_id, 'customer_name': data.name,
@@ -817,6 +884,12 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles('cu
     if not rest:
         raise HTTPException(status_code=404, detail="Restaurant not found")
     total = sum(i.price * i.quantity for i in data.items)
+    min_val = float(rest.get('min_order_value') or 0.0)
+    if min_val > 0 and total < min_val:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Minimum order value is ₺{min_val:.2f}. Add ₺{(min_val - total):.2f} more to check out.",
+        )
     order_id = str(uuid.uuid4())
     ts = now_iso()
     order = {
@@ -841,6 +914,11 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles('cu
     }
     await db.orders.insert_one(order)
     order.pop('_id', None)
+    # bump restaurant order_count for popularity ranking
+    try:
+        await db.restaurants.update_one({'id': data.restaurant_id}, {'$inc': {'order_count': 1}})
+    except Exception:
+        pass
     # Notify owner in real-time + push
     try:
         rest = await db.restaurants.find_one({'id': data.restaurant_id}, {'_id': 0})
@@ -1146,6 +1224,23 @@ async def seed_data():
 @api_router.get("/")
 async def root():
     return {'message': 'DirectDine API', 'version': '1.0'}
+
+
+@api_router.post("/admin/cleanup-junk-restaurants")
+async def cleanup_junk_restaurants():
+    """Removes obvious test-data restaurants (short/nonsense names). Idempotent."""
+    junk_patterns = [
+        {'name': {'$regex': r'^(test|www+|xxx+|asdf|qwer)', '$options': 'i'}},
+        {'name': {'$regex': r'^.{1,3}$'}},  # 1-3 char names
+    ]
+    result = await db.restaurants.delete_many({'$or': junk_patterns})
+    # Also drop any orphan users pointing to non-existent restaurants
+    rest_ids = {r['id'] for r in await db.restaurants.find({}, {'_id': 0, 'id': 1}).to_list(1000)}
+    await db.users.update_many(
+        {'role': 'restaurant_owner', 'restaurant_id': {'$nin': list(rest_ids)}},
+        {'$set': {'role': 'customer', 'restaurant_id': None}},
+    )
+    return {'ok': True, 'deleted': result.deleted_count}
 
 
 @api_router.post("/register-push", status_code=201)

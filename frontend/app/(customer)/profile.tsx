@@ -26,6 +26,7 @@ export default function CustomerProfile() {
   const [showRestSettings, setShowRestSettings] = useState(false);
   const [restInfo, setRestInfo] = useState<any>(null);
   const [radiusInput, setRadiusInput] = useState('');
+  const [minOrderInput, setMinOrderInput] = useState('');
   const [logoBase64, setLogoBase64] = useState<string | null>(null);
   const [pickingLogo, setPickingLogo] = useState(false);
   const [savingRest, setSavingRest] = useState(false);
@@ -52,15 +53,18 @@ export default function CustomerProfile() {
       const r = await api.get('/restaurants/me/info');
       setRestInfo(r.data);
       setRadiusInput(String(r.data.delivery_radius_km ?? 5));
+      setMinOrderInput(String(r.data.min_order_value ?? 0));
     } catch {}
   };
 
   const saveRestSettings = async () => {
     const val = parseFloat(radiusInput);
+    const minVal = parseFloat(minOrderInput || '0');
     if (isNaN(val) || val <= 0) return;
+    if (isNaN(minVal) || minVal < 0) return;
     setSavingRest(true);
     try {
-      const body: any = { delivery_radius_km: val };
+      const body: any = { delivery_radius_km: val, min_order_value: minVal };
       if (logoBase64) body.logo_base64 = logoBase64;
       await api.put('/restaurants/me', body);
       setShowRestSettings(false);
@@ -304,6 +308,21 @@ export default function CustomerProfile() {
                   <Text style={{ color: theme.colors.onSurfaceTertiary, fontSize: theme.font.sm, marginTop: theme.spacing.xs }}>
                     {t('radiusHelp')}
                   </Text>
+                  <Text style={{ fontSize: theme.font.sm, color: theme.colors.onSurfaceTertiary, fontWeight: '700', marginTop: theme.spacing.md }}>
+                    {t('minOrderValue').toUpperCase()}
+                  </Text>
+                  <TextInput
+                    testID="restaurant-min-order-input"
+                    style={styles.input}
+                    keyboardType="decimal-pad"
+                    value={minOrderInput}
+                    onChangeText={setMinOrderInput}
+                    placeholder="0"
+                    placeholderTextColor={theme.colors.onSurfaceTertiary}
+                  />
+                  <Text style={{ color: theme.colors.onSurfaceTertiary, fontSize: theme.font.sm, marginTop: theme.spacing.xs }}>
+                    {t('minOrderHelp')}
+                  </Text>
                   <View style={styles.mActions}>
                     <Pressable onPress={() => setShowRestSettings(false)} style={[styles.mBtn, styles.mBtnCancel]}>
                       <Text>{t('cancel')}</Text>
@@ -317,6 +336,29 @@ export default function CustomerProfile() {
                       {savingRest ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>{t('save')}</Text>}
                     </Pressable>
                   </View>
+                  <Pressable
+                    testID="toggle-campaign-btn"
+                    onPress={async () => {
+                      const url = restInfo.campaign_active ? '/restaurants/me/campaign/stop' : '/restaurants/me/campaign/start';
+                      try {
+                        const res = await api.post(url);
+                        setRestInfo(res.data);
+                      } catch {}
+                    }}
+                    style={[styles.campaignBtn, restInfo.campaign_active ? styles.campaignStop : styles.campaignStart]}
+                  >
+                    <Ionicons name={restInfo.campaign_active ? 'stop-circle' : 'flash'} size={18} color="#fff" />
+                    <Text style={styles.campaignBtnTxt}>
+                      {restInfo.campaign_active
+                        ? 'Stop campaign'
+                        : '⚡ Start 3-day discount campaign'}
+                    </Text>
+                  </Pressable>
+                  {restInfo.campaign_active && restInfo.campaign_ends_at && (
+                    <Text style={{ textAlign: 'center', color: theme.colors.brandDark, marginTop: 6, fontWeight: '600' }}>
+                      Ends {new Date(restInfo.campaign_ends_at).toLocaleString()}
+                    </Text>
+                  )}
                 </>
               )}
             </View>
@@ -373,4 +415,8 @@ const styles = StyleSheet.create({
   logoPreview: { width: 64, height: 64, borderRadius: 32, backgroundColor: theme.colors.brandTertiary, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   pickLogoBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: theme.radius.md, borderWidth: 1, borderColor: theme.colors.brand, borderStyle: 'dashed' },
   pickLogoTxt: { color: theme.colors.brand, fontWeight: '700' },
+  campaignBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, padding: theme.spacing.md, borderRadius: theme.radius.pill, marginTop: theme.spacing.lg },
+  campaignStart: { backgroundColor: theme.colors.brand },
+  campaignStop: { backgroundColor: theme.colors.error },
+  campaignBtnTxt: { color: '#fff', fontWeight: '800', fontSize: theme.font.base },
 });
