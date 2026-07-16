@@ -63,6 +63,9 @@ export default function InviteAccept() {
           </View>
 
           <Text style={styles.title}>{t('acceptInviteTitle')}</Text>
+          <Text style={{ textAlign: 'center', color: theme.colors.onSurfaceSecondary, marginBottom: theme.spacing.lg, fontSize: theme.font.base }}>
+            {t('acceptInviteSubtitle')}
+          </Text>
 
           {!info ? (
             <Text style={styles.err}>{err || t('inviteInvalid')}</Text>

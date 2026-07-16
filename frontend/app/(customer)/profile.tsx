@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Image, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -9,6 +9,9 @@ import { useAuth } from '@/src/context/AuthContext';
 import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
 import { HoursEditor, DEFAULT_HOURS, normalizeHours, isValidHHMM, WEEKDAYS as WK, HoursMap } from '@/src/components/HoursEditor';
+
+// URL to the desktop web admin panel (same origin as the site).
+const WEB_PORTAL_URL = (process.env.EXPO_PUBLIC_BACKEND_URL || '').replace(/\/$/, '') || 'https://easyum.app';
 
 interface SavedAddress {
   id: string; label: string; address: string; extra: string; lat: number; lng: number;
@@ -23,6 +26,8 @@ export default function CustomerProfile() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
+  // Business modal (mobile → web portal redirect)
+  const [showBusiness, setShowBusiness] = useState(false);
   // Restaurant settings modal (owner)
   const [showRestSettings, setShowRestSettings] = useState(false);
   const [restInfo, setRestInfo] = useState<any>(null);
@@ -119,17 +124,17 @@ export default function CustomerProfile() {
     }
   };
 
-  const goRestaurantOwner = () => {
-    if (!user) {
-      // Guest → send to register with owner preselected
-      router.push('/(auth)/register?role=restaurant_owner');
-      return;
+  const openWebPortal = async () => {
+    // On web, open the site in a new tab. On native, open external browser.
+    if (Platform.OS === 'web') {
+      try {
+        (window as any).open(WEB_PORTAL_URL, '_blank');
+      } catch {}
+    } else {
+      try {
+        await Linking.openURL(WEB_PORTAL_URL);
+      } catch {}
     }
-    if (user.role === 'restaurant_owner') {
-      router.replace('/(owner)/dashboard');
-      return;
-    }
-    setShowRestaurantSetup(true);
   };
 
   const switchBackToCustomer = () => {
@@ -162,7 +167,7 @@ export default function CustomerProfile() {
           </View>
         )}
 
-        <Text style={styles.sectionLabel}>Business</Text>
+        <Text style={styles.sectionLabel}>{t('business')}</Text>
         {user?.role === 'restaurant_owner' ? (
           <>
             <Pressable testID="go-restaurant-dashboard" onPress={() => router.replace('/(owner)/dashboard')} style={styles.rowBtn}>
@@ -175,6 +180,11 @@ export default function CustomerProfile() {
               <Text style={styles.rowBtnTxt}>{t('restaurantSettings')}</Text>
               <Ionicons name="chevron-forward" size={18} color={theme.colors.onSurfaceTertiary} />
             </Pressable>
+            <Pressable testID="open-business-modal" onPress={() => setShowBusiness(true)} style={styles.rowBtn}>
+              <Ionicons name="globe-outline" size={22} color={theme.colors.brand} />
+              <Text style={styles.rowBtnTxt}>{t('webPortal')}</Text>
+              <Ionicons name="chevron-forward" size={18} color={theme.colors.onSurfaceTertiary} />
+            </Pressable>
             <Pressable testID="switch-to-customer" onPress={switchBackToCustomer} style={styles.rowBtn}>
               <Ionicons name="person" size={22} color={theme.colors.onSurfaceSecondary} />
               <Text style={styles.rowBtnTxt}>{t('switchToCustomer')}</Text>
@@ -182,12 +192,9 @@ export default function CustomerProfile() {
             </Pressable>
           </>
         ) : (
-          <Pressable testID="become-restaurant" onPress={goRestaurantOwner} style={styles.becomeCard}>
-            <View style={styles.becomeIcon}><Ionicons name="storefront" size={22} color={theme.colors.brandDark} /></View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.becomeTitle}>{t('switchToRestaurant')}</Text>
-              <Text style={styles.becomeDesc}>{t('switchToRestaurantDesc')}</Text>
-            </View>
+          <Pressable testID="business-row" onPress={() => setShowBusiness(true)} style={styles.rowBtn}>
+            <Ionicons name="briefcase-outline" size={22} color={theme.colors.brand} />
+            <Text style={styles.rowBtnTxt}>{t('business')}</Text>
             <Ionicons name="chevron-forward" size={18} color={theme.colors.onSurfaceTertiary} />
           </Pressable>
         )}
@@ -404,6 +411,53 @@ export default function CustomerProfile() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Business / Web-portal modal */}
+      <Modal visible={showBusiness} transparent animationType="fade" onRequestClose={() => setShowBusiness(false)}>
+        <Pressable style={styles.bizBg} onPress={() => setShowBusiness(false)}>
+          <Pressable style={styles.bizCard} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.bizIconWrap}><Ionicons name="storefront" size={40} color="#fff" /></View>
+            <Text style={styles.bizTitle}>{t('businessTitle')}</Text>
+            <Text style={styles.bizSubtitle}>{t('businessSubtitle')}</Text>
+
+            <View style={styles.bizList}>
+              <View style={styles.bizRow}>
+                <Ionicons name="checkmark-circle" size={18} color={theme.colors.brand} />
+                <Text style={styles.bizRowTxt}>{t('bizBullet1')}</Text>
+              </View>
+              <View style={styles.bizRow}>
+                <Ionicons name="checkmark-circle" size={18} color={theme.colors.brand} />
+                <Text style={styles.bizRowTxt}>{t('bizBullet2')}</Text>
+              </View>
+              <View style={styles.bizRow}>
+                <Ionicons name="checkmark-circle" size={18} color={theme.colors.brand} />
+                <Text style={styles.bizRowTxt}>{t('bizBullet3')}</Text>
+              </View>
+              <View style={styles.bizRow}>
+                <Ionicons name="checkmark-circle" size={18} color={theme.colors.brand} />
+                <Text style={styles.bizRowTxt}>{t('bizBullet4')}</Text>
+              </View>
+            </View>
+
+            <Pressable
+              testID="open-portal-btn"
+              onPress={openWebPortal}
+              style={styles.bizCta}
+            >
+              <Ionicons name="open-outline" size={18} color="#fff" />
+              <Text style={styles.bizCtaTxt}>{t('openWebPortal')}</Text>
+            </Pressable>
+
+            <Text style={styles.bizUrl}>{WEB_PORTAL_URL}</Text>
+
+            <Text style={styles.bizFootnote}>{t('courierAppNote')}</Text>
+
+            <Pressable testID="close-business-modal" onPress={() => setShowBusiness(false)} style={styles.bizClose}>
+              <Text style={styles.bizCloseTxt}>{t('close')}</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -431,6 +485,20 @@ const styles = StyleSheet.create({
   becomeIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   becomeTitle: { fontWeight: '800', color: theme.colors.onSurface, fontSize: theme.font.lg },
   becomeDesc: { color: theme.colors.onSurfaceSecondary, fontSize: theme.font.sm, marginTop: 2 },
+  bizBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: theme.spacing.xl },
+  bizCard: { backgroundColor: '#fff', borderRadius: theme.radius.lg, padding: theme.spacing.xl, width: '100%', maxWidth: 420, alignItems: 'center' },
+  bizIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: theme.colors.brand, alignItems: 'center', justifyContent: 'center', marginBottom: theme.spacing.md },
+  bizTitle: { fontSize: theme.font.xxl, fontWeight: '800', color: theme.colors.onSurface, textAlign: 'center' },
+  bizSubtitle: { color: theme.colors.onSurfaceSecondary, textAlign: 'center', marginTop: theme.spacing.sm, marginBottom: theme.spacing.lg, fontSize: theme.font.base },
+  bizList: { alignSelf: 'stretch', gap: theme.spacing.sm, marginBottom: theme.spacing.lg },
+  bizRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+  bizRowTxt: { flex: 1, color: theme.colors.onSurface, fontSize: theme.font.base, fontWeight: '600' },
+  bizCta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: theme.colors.brand, paddingHorizontal: theme.spacing.xl, paddingVertical: theme.spacing.md, borderRadius: theme.radius.pill, alignSelf: 'stretch' },
+  bizCtaTxt: { color: '#fff', fontWeight: '800', fontSize: theme.font.lg },
+  bizUrl: { color: theme.colors.onSurfaceTertiary, fontSize: theme.font.sm, marginTop: theme.spacing.sm, textAlign: 'center' },
+  bizFootnote: { color: theme.colors.onSurfaceSecondary, fontSize: theme.font.sm, textAlign: 'center', marginTop: theme.spacing.lg, lineHeight: 18 },
+  bizClose: { marginTop: theme.spacing.md, paddingVertical: 8, paddingHorizontal: theme.spacing.xl },
+  bizCloseTxt: { color: theme.colors.onSurfaceSecondary, fontWeight: '700' },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, padding: theme.spacing.lg, backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md },
   logoutTxt: { color: theme.colors.error, fontWeight: '700', fontSize: theme.font.lg },
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },

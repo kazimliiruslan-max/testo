@@ -846,32 +846,37 @@ def _send_invite_email(to_email: str, courier_name: str, restaurant_name: str, i
         html = f"""
         <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a1a1a">
           <div style="text-align:center;padding:24px 0">
-            <div style="display:inline-block;background:#2ECC71;color:#fff;font-weight:800;padding:12px 20px;border-radius:8px;font-size:20px">🚴 DirectDine</div>
+            <div style="display:inline-block;background:#2ECC71;color:#fff;font-weight:800;padding:12px 20px;border-radius:8px;font-size:20px">🚴 EasYum</div>
           </div>
           <h1 style="font-size:22px;margin:16px 0">Hi {courier_name}, you're invited!</h1>
           <p style="font-size:16px;color:#4a4a4a;line-height:1.5">
-            <strong>{restaurant_name}</strong> has invited you to join DirectDine as their courier.
-            Tap the button below to set your password and open your delivery dashboard.
+            <strong>{restaurant_name}</strong> has invited you to join EasYum as their courier.
+            You'll receive delivery jobs directly from the restaurant with 0% commission.
           </p>
+          <ol style="font-size:15px;color:#333;line-height:1.7;padding-left:20px">
+            <li><strong>Download the EasYum app</strong> on your phone (iOS or Android).</li>
+            <li>Tap the button below on your phone to open the invite in the app.</li>
+            <li>Choose your password — you'll be automatically signed in.</li>
+          </ol>
           <div style="text-align:center;margin:32px 0">
             <a href="{invite_link}" style="background:#2ECC71;color:#fff;text-decoration:none;padding:14px 28px;border-radius:999px;font-weight:700;display:inline-block;font-size:16px">
-              Activate my account
+              Accept invite & set password
             </a>
           </div>
           <p style="font-size:13px;color:#7a7a7a">
-            Or copy this link into your browser:<br/>
+            Or copy this link into your phone's browser:<br/>
             <a href="{invite_link}" style="color:#1E9E5C">{invite_link}</a>
           </p>
           <hr style="border:none;border-top:1px solid #eee;margin:32px 0"/>
           <p style="font-size:12px;color:#a0a0a0;text-align:center">
-            DirectDine — 0% commission food delivery
+            EasYum — 0% commission food delivery. Restaurants keep every lira.
           </p>
         </div>
         """
         resend.Emails.send({
             "from": RESEND_FROM,
             "to": [to_email],
-            "subject": f"You're invited to deliver for {restaurant_name}",
+            "subject": f"You're invited to deliver for {restaurant_name} — EasYum",
             "html": html,
         })
         return True
