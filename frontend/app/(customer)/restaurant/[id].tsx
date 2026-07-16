@@ -74,6 +74,12 @@ export default function RestaurantDetail() {
         </View>
 
         <View style={styles.body}>
+          {restaurant.is_open_now === false && (
+            <View style={styles.closedBanner}>
+              <Ionicons name="moon" size={16} color="#fff" />
+              <Text style={styles.closedBannerTxt}>{t('restaurantClosed')}</Text>
+            </View>
+          )}
           {restaurant.campaign_active && (
             <View style={styles.campaignBanner}>
               <Ionicons name="pricetag" size={16} color="#fff" />
@@ -129,13 +135,14 @@ export default function RestaurantDetail() {
                 </View>
                 <Pressable
                   testID={`add-item-${item.id}`}
+                  disabled={restaurant.is_open_now === false}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                     add(restaurant.id, restaurant.name, {
                       menu_item_id: item.id, name: item.name, price: shownPrice,
                     });
                   }}
-                  style={styles.addBtn}
+                  style={[styles.addBtn, restaurant.is_open_now === false && { opacity: 0.4 }]}
                 >
                   <Ionicons name="add" size={22} color={theme.colors.onBrand} />
                 </Pressable>
@@ -194,6 +201,8 @@ const styles = StyleSheet.create({
   minOrderPillTxt: { color: theme.colors.brandDark, fontWeight: '700', fontSize: theme.font.sm },
   campaignBanner: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.colors.error, paddingHorizontal: theme.spacing.md, paddingVertical: 6, borderRadius: theme.radius.pill, marginBottom: theme.spacing.sm },
   campaignBannerTxt: { color: '#fff', fontWeight: '800', fontSize: theme.font.sm },
+  closedBanner: { alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: theme.colors.error, paddingHorizontal: theme.spacing.md, paddingVertical: 8, borderRadius: theme.radius.md, marginBottom: theme.spacing.sm },
+  closedBannerTxt: { color: '#fff', fontWeight: '800', fontSize: theme.font.base },
   addBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.brand, alignItems: 'center', justifyContent: 'center' },
   cartBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: theme.colors.surface, borderTopWidth: 1, borderTopColor: theme.colors.divider, padding: theme.spacing.md },
   cartBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.brand, borderRadius: theme.radius.pill, paddingHorizontal: theme.spacing.lg, height: 54, gap: theme.spacing.md },

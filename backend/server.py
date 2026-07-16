@@ -16,7 +16,7 @@ import asyncio
 import math
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Dict, Any
 from datetime import datetime, timezone, timedelta
 
 ROOT_DIR = Path(__file__).parent
@@ -141,6 +141,59 @@ class AuthResponse(BaseModel):
     token_type: str = "bearer"
     user: UserPublic
 
+# ---------- Restaurant hours ----------
+WEEKDAYS = ('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun')
+
+
+class HoursSlot(BaseModel):
+    """A day's opening slot. `closed=True` means the restaurant is closed all day.
+    Times are 24h "HH:MM". Cross-midnight (e.g. 18:00 -> 02:00) supported."""
+    closed: bool = False
+    open: str = "09:00"
+    close: str = "22:00"
+
+
+DEFAULT_HOURS: Dict[str, Dict[str, Any]] = {
+    d: {"closed": False, "open": "09:00", "close": "22:00"} for d in WEEKDAYS
+}
+
+
+def _parse_hhmm(t: str) -> int:
+    """Return minutes-since-midnight for a HH:MM string, or -1 if invalid."""
+    try:
+        h, m = t.split(':')
+        h_i, m_i = int(h), int(m)
+        if 0 <= h_i <= 23 and 0 <= m_i <= 59:
+            return h_i * 60 + m_i
+    except Exception:
+        pass
+    return -1
+
+
+def is_restaurant_open_now(hours: Optional[Dict[str, Any]], now: Optional[datetime] = None) -> bool:
+    """Given a weekday-keyed hours dict, determine whether the restaurant is
+    open at `now` (default: server-local time). Missing/invalid → True (open)
+    so restaurants without hours configured stay accessible."""
+    if not hours:
+        return True
+    now = now or datetime.now()
+    day_key = WEEKDAYS[now.weekday()]
+    slot = hours.get(day_key)
+    if not slot:
+        return True
+    if slot.get('closed'):
+        return False
+    open_m = _parse_hhmm(str(slot.get('open', '')))
+    close_m = _parse_hhmm(str(slot.get('close', '')))
+    if open_m < 0 or close_m < 0:
+        return True  # misconfigured — fail-open
+    cur = now.hour * 60 + now.minute
+    if close_m > open_m:
+        return open_m <= cur < close_m
+    # crosses midnight
+    return cur >= open_m or cur < close_m
+
+
 class Restaurant(BaseModel):
     id: str
     owner_id: str
@@ -162,6 +215,8 @@ class Restaurant(BaseModel):
     campaign_active: bool = False
     campaign_ends_at: Optional[str] = None
     order_count: int = 0
+    hours: Optional[Dict[str, Any]] = None
+    is_open_now: Optional[bool] = None
     created_at: str
 
 class RestaurantCreate(BaseModel):
@@ -175,6 +230,7 @@ class RestaurantCreate(BaseModel):
     delivery_minutes: Optional[int] = 30
     delivery_radius_km: Optional[float] = Field(default=5.0, gt=0)
     min_order_value: Optional[float] = Field(default=0.0, ge=0)
+    hours: Optional[Dict[str, Any]] = None
 
 class RestaurantUpdate(BaseModel):
     name: Optional[str] = None
@@ -189,6 +245,7 @@ class RestaurantUpdate(BaseModel):
     min_order_value: Optional[float] = Field(default=None, ge=0)
     logo_url: Optional[str] = None
     logo_base64: Optional[str] = None
+    hours: Optional[Dict[str, Any]] = None
 
 class MenuItem(BaseModel):
     id: str
@@ -468,6 +525,7 @@ async def list_restaurants(cuisine: Optional[str] = None, lat: Optional[float] =
             d['campaign_ends_at'] = None
         rest = Restaurant(**d)
         entry = RestaurantWithDistance(**rest.dict())
+        entry.is_open_now = is_restaurant_open_now(rest.hours)
         if lat is not None and lng is not None:
             dist = _haversine_km(lat, lng, rest.lat, rest.lng)
             entry.distance_km = round(dist, 2)
@@ -482,7 +540,9 @@ async def get_restaurant(rid: str):
     doc = await db.restaurants.find_one({'id': rid}, {'_id': 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Restaurant not found")
-    return Restaurant(**doc)
+    rest = Restaurant(**doc)
+    rest.is_open_now = is_restaurant_open_now(rest.hours)
+    return rest
 
 @api_router.put("/restaurants/me", response_model=Restaurant)
 async def update_my_restaurant(data: RestaurantUpdate, user: dict = Depends(require_roles('restaurant_owner'))):
@@ -503,7 +563,9 @@ async def get_my_restaurant(user: dict = Depends(require_roles('restaurant_owner
     doc = await db.restaurants.find_one({'id': user['restaurant_id']}, {'_id': 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Restaurant not found")
-    return Restaurant(**doc)
+    rest = Restaurant(**doc)
+    rest.is_open_now = is_restaurant_open_now(rest.hours)
+    return rest
 
 
 class CampaignStartInput(BaseModel):
@@ -694,6 +756,22 @@ async def list_couriers(user: dict = Depends(require_roles('restaurant_owner')))
 @api_router.post("/couriers/me/location")
 async def update_courier_location(loc: CourierLocation, user: dict = Depends(require_roles('courier'))):
     await db.users.update_one({'id': user['id']}, {'$set': {'lat': loc.lat, 'lng': loc.lng}})
+    # Broadcast the courier's new position to every customer whose active order
+    # is currently assigned to this courier so their tracking screen can update
+    # the ETA in real time.
+    active_orders = await db.orders.find({
+        'courier_id': user['id'],
+        'status': {'$in': ['accepted', 'preparing', 'out_for_delivery']},
+    }, {'_id': 0, 'id': 1, 'customer_id': 1}).to_list(50)
+    if active_orders:
+        for o in active_orders:
+            await ws_manager.send(o['customer_id'], {
+                'type': 'courier_location',
+                'order_id': o['id'],
+                'courier_id': user['id'],
+                'lat': loc.lat,
+                'lng': loc.lng,
+            })
     return {'ok': True, 'lat': loc.lat, 'lng': loc.lng}
 
 @api_router.get("/couriers/{cid}/location")
@@ -854,6 +932,8 @@ async def create_order_as_guest(data: GuestOrderCreate):
     rest = await db.restaurants.find_one({'id': data.restaurant_id}, {'_id': 0})
     if not rest:
         raise HTTPException(status_code=404, detail="Restaurant not found")
+    if not is_restaurant_open_now(rest.get('hours')):
+        raise HTTPException(status_code=400, detail="Restaurant is currently closed. Please try again during opening hours.")
     total = sum(i.price * i.quantity for i in data.items)
     min_val = float(rest.get('min_order_value') or 0.0)
     if min_val > 0 and total < min_val:
@@ -890,6 +970,8 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles('cu
     rest = await db.restaurants.find_one({'id': data.restaurant_id}, {'_id': 0})
     if not rest:
         raise HTTPException(status_code=404, detail="Restaurant not found")
+    if not is_restaurant_open_now(rest.get('hours')):
+        raise HTTPException(status_code=400, detail="Restaurant is currently closed. Please try again during opening hours.")
     total = sum(i.price * i.quantity for i in data.items)
     min_val = float(rest.get('min_order_value') or 0.0)
     if min_val > 0 and total < min_val:

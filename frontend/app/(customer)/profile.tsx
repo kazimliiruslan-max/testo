@@ -8,6 +8,7 @@ import { api, formatApiError } from '@/src/api/client';
 import { useAuth } from '@/src/context/AuthContext';
 import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
+import { HoursEditor, DEFAULT_HOURS, normalizeHours, isValidHHMM, WEEKDAYS as WK, HoursMap } from '@/src/components/HoursEditor';
 
 interface SavedAddress {
   id: string; label: string; address: string; extra: string; lat: number; lng: number;
@@ -27,6 +28,7 @@ export default function CustomerProfile() {
   const [restInfo, setRestInfo] = useState<any>(null);
   const [radiusInput, setRadiusInput] = useState('');
   const [minOrderInput, setMinOrderInput] = useState('');
+  const [hoursInput, setHoursInput] = useState<HoursMap>(DEFAULT_HOURS);
   const [logoBase64, setLogoBase64] = useState<string | null>(null);
   const [pickingLogo, setPickingLogo] = useState(false);
   const [savingRest, setSavingRest] = useState(false);
@@ -54,6 +56,7 @@ export default function CustomerProfile() {
       setRestInfo(r.data);
       setRadiusInput(String(r.data.delivery_radius_km ?? 5));
       setMinOrderInput(String(r.data.min_order_value ?? 0));
+      setHoursInput(normalizeHours(r.data.hours));
     } catch {}
   };
 
@@ -62,13 +65,23 @@ export default function CustomerProfile() {
     const minVal = parseFloat(minOrderInput || '0');
     if (isNaN(val) || val <= 0) return;
     if (isNaN(minVal) || minVal < 0) return;
+    // Validate hours
+    for (const { key } of WK) {
+      const s = hoursInput[key];
+      if (!s.closed && (!isValidHHMM(s.open) || !isValidHHMM(s.close))) {
+        setErr('Please use HH:MM format for all opening hours');
+        return;
+      }
+    }
     setSavingRest(true);
     try {
-      const body: any = { delivery_radius_km: val, min_order_value: minVal };
+      const body: any = { delivery_radius_km: val, min_order_value: minVal, hours: hoursInput };
       if (logoBase64) body.logo_base64 = logoBase64;
       await api.put('/restaurants/me', body);
       setShowRestSettings(false);
-    } catch {}
+    } catch (e: any) {
+      setErr(formatApiError(e, t('error')));
+    }
     finally { setSavingRest(false); }
   };
 
@@ -324,7 +337,11 @@ export default function CustomerProfile() {
                     {t('minOrderHelp')}
                   </Text>
 
-                  {/* Campaign section (moved above Save/Cancel for clearer hierarchy) */}
+                  {/* Weekly opening hours */}
+                  <View style={styles.divider} />
+                  <HoursEditor value={hoursInput} onChange={setHoursInput} />
+
+                  {/* Campaign section */}
                   <View style={styles.divider} />
                   <Text style={styles.sectionLabelInline}>⚡ {t('campaignPickDuration')}</Text>
                   {!restInfo.campaign_active ? (

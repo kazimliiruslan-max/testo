@@ -9,6 +9,7 @@ import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
 import OrderMap from '@/src/components/OrderMap';
 import { useOrderEvents } from '@/src/hooks/useOrderEvents';
+import { estimateEtaRange, formatEtaRange } from '@/src/utils/delivery';
 
 const STATUSES = ['pending', 'accepted', 'preparing', 'out_for_delivery', 'delivered'];
 
@@ -59,10 +60,33 @@ export default function TrackOrder() {
 
   // Real-time updates
   useOrderEvents((msg) => {
-    if (msg?.order_id === id && (msg.type === 'order_status' || msg.type === 'order_assigned')) {
+    if (!msg) return;
+    if (msg.order_id === id && (msg.type === 'order_status' || msg.type === 'order_assigned')) {
       load();
+    } else if (msg.type === 'courier_location' && msg.order_id === id) {
+      // Live courier position update (no need to refetch — just update local state)
+      if (typeof msg.lat === 'number' && typeof msg.lng === 'number') {
+        setCourierLoc({ lat: msg.lat, lng: msg.lng });
+      }
     }
   }, !!id);
+
+  // Compute live ETA range from courier position → delivery destination
+  const liveEta = (() => {
+    if (!order) return null;
+    if (order.status === 'delivered' || order.status === 'cancelled') return null;
+    if (
+      typeof courierLoc?.lat !== 'number' ||
+      typeof courierLoc?.lng !== 'number' ||
+      typeof order?.delivery_lat !== 'number' ||
+      typeof order?.delivery_lng !== 'number'
+    ) return null;
+    return estimateEtaRange(courierLoc.lat, courierLoc.lng, order.delivery_lat, order.delivery_lng);
+  })();
+
+  const etaLabel = liveEta
+    ? formatEtaRange(liveEta.min, liveEta.max, t('minDelivery'))
+    : `~${restaurant?.delivery_minutes ?? 30} ${t('minDelivery')}`;
 
   if (loading || !order) {
     return <View style={styles.center}><ActivityIndicator color={theme.colors.brand} size="large" /></View>;
@@ -95,7 +119,10 @@ export default function TrackOrder() {
           </Pressable>
           <View style={styles.overlayInfo}>
             <Text style={styles.overlayTitle}>{order.restaurant_name}</Text>
-            <Text style={styles.overlaySub}>ETA {restaurant?.delivery_minutes ?? 30} {t('minDelivery')}</Text>
+            <Text style={styles.overlaySub}>ETA {etaLabel}</Text>
+            {liveEta && liveEta.distanceKm > 0 && (
+              <Text style={styles.overlayDistance}>{liveEta.distanceKm.toFixed(1)} km · live</Text>
+            )}
           </View>
         </SafeAreaView>
       </View>
@@ -179,6 +206,7 @@ const styles = StyleSheet.create({
   overlayInfo: { flex: 1, backgroundColor: '#fff', padding: theme.spacing.md, borderRadius: theme.radius.md, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
   overlayTitle: { fontWeight: '800', color: theme.colors.onSurface },
   overlaySub: { color: theme.colors.onSurfaceSecondary, fontSize: theme.font.sm },
+  overlayDistance: { color: theme.colors.brandDark, fontSize: theme.font.xs, fontWeight: '700', marginTop: 2 },
   sheet: { flex: 1, backgroundColor: theme.colors.surface, marginTop: -20, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: theme.spacing.lg },
   sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.colors.border, alignSelf: 'center', marginTop: theme.spacing.md, marginBottom: theme.spacing.lg },
   sheetTitle: { fontSize: theme.font.xl, fontWeight: '800', color: theme.colors.onSurface, marginBottom: theme.spacing.lg },

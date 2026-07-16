@@ -185,6 +185,10 @@ const strings = {
     stopCampaign: 'Stop campaign',
     campaignEnds: 'Ends',
     restaurantAdmin: 'Restaurant Admin',
+    closed: 'Closed',
+    restaurantClosed: 'Restaurant is closed',
+    weeklyHours: 'Weekly hours',
+    applyMonToAll: 'Apply Mon to all days',
   },
   tr: {
     welcome: 'EasYum\'a Hoş Geldiniz',
@@ -357,6 +361,10 @@ const strings = {
     stopCampaign: 'Kampanyayı durdur',
     campaignEnds: 'Bitiş',
     restaurantAdmin: 'Restoran Paneli',
+    closed: 'Kapalı',
+    restaurantClosed: 'Restoran kapalı',
+    weeklyHours: 'Haftalık çalışma saatleri',
+    applyMonToAll: 'Pazartesi\'yi tüm günlere uygula',
   },
 };
 

@@ -1,0 +1,47 @@
+{
+  "summary": "DirectDine iter11 tested (backend + frontend). BACKEND 16/16 PASS (5.97s) — GET /api/restaurants and GET /api/restaurants/{id} return is_open_now correctly (True when hours=null or current-day-open); PUT /api/restaurants/me with 7-day hours map persists and reads back (Tue 10:00-23:00 verified); POST /api/orders returns 400 with 'Restaurant is currently closed…' when today's slot has closed=true; POST /api/orders/guest returns 400 with same message when ALL days closed AND GET /api/restaurants/{id} returns is_open_now=false; POST /api/couriers/me/location returns {ok:true, lat, lng} for the assigned courier (broadcast path did not raise). Regression: campaign start days=1/3/7/14/30 all 200 with correct ends_at delta; min_order_value enforced with 400 'Minimum order value'; delivery_radius_km=0 → 422; /admin/cleanup-junk-restaurants idempotent. FRONTEND (desktop 1280x800): owner1 login → sidebar Profile → 'open-restaurant-settings' opens modal that renders HoursEditor with all 7 rows hours-row-{mon..sun}, each with hours-open-toggle-{day}, hours-open-{day}, hours-close-{day}. 'apply-mon-to-all' correctly propagates Mon's values (verified tue.open=08:30, sun.close=21:45 after apply). Toggling Thu→Closed and Saving results in: (a) home shows red 'Closed' badge on the Bella Napoli card + '🌙 Restaurant is closed' sub-line (screenshot captured), and (b) restaurant detail body renders a red 'Restaurant is closed' banner (code-verified in restaurant/[id].tsx line 77-82, text-search on page returned True). Add-to-cart Pressables have disabled={restaurant.is_open_now===false} and opacity 0.4 style (code-verified line 138-145). Restore step: hours re-set to open 09:00-22:00 on all 7 days via API PUT (200); is_open_now now legitimately False only because current server local time is 08:35 (< 09:00) and will flip to true at 09:00 as designed. NOTE: deprecated packages / RN issues: none new in iter11 scope; only pre-existing console noise (expo-notifications web-listener warning, shadow*, pointerEvents deprecation).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Restaurant Settings modal — /app/frontend/app/(customer)/profile.tsx (HoursEditor section, line ~340-342)",
+        "issues": [
+          "The Weekly Hours block sits between the Min-order pill and the campaign chips with only a divider — consider adding an explicit uppercase section label like the other blocks (e.g. 'WEEKLY OPENING HOURS') for visual parity with RESTAURANT LOGO / DELIVERY RADIUS / MINIMUM ORDER labels. HoursEditor already has an inline 'Weekly hours / Apply Mon to all days' header but style-weight differs.",
+          "When a day is toggled to Closed the time inputs disappear (correct), but the row height shrinks slightly causing minor vertical jitter across the 7 rows — consider reserving the input width even in the closed state, or right-aligning a small 'Closed all day' label so the grid alignment stays stable."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_directdine_iter11.py",
+    "/app/test_reports/pytest/pytest_iter11.xml"
+  ],
+  "action_items": [
+    "(Optional) Add an uppercase section label (e.g. 'WEEKLY OPENING HOURS') above HoursEditor to match the visual hierarchy of the other Settings blocks.",
+    "(Carry-over from iter9/iter10, still not fixed) Campaign strike-through discount price on customer restaurant screen — /app/frontend/app/(customer)/restaurant/[id].tsx line 122-123 uses `regularPrice = price*(1+feePct/100)`; strike-through only shows when campaign_active AND feePct>0. Confirm this matches the intent (during campaign the backend zeroes the fee uplift). If some items have delivery_fee_pct=0 they will never show a strikethrough. Consider adding a UI hint even for fee-zero items during a campaign.",
+    "(Carry-over) server.py has grown to 1422 lines — consider splitting into routers/modules.",
+    "(Nice-to-have) Because server local time gates opening/closing, restaurants near a boundary (like right now Thu 08:35 vs open 09:00) show is_open_now=false right up until the minute they open. Consider also returning `opens_at`/`closes_at` next-transition ISO in the response so the client can show a 'Opens at 09:00' countdown instead of just 'Restaurant is closed'."
+  ],
+  "critical_code_review_comments": [
+    "backend/server.py:173-194 is_restaurant_open_now is well-designed with cross-midnight support and fail-open on missing/invalid hours (returns True). Uses datetime.now() (server local), which is intentional per spec.",
+    "backend/server.py:935 and :973 correctly gate BOTH /api/orders and /api/orders/guest with HTTP 400 + explicit 'Restaurant is currently closed. Please try again during opening hours.' — matches spec's 'detail containing closed'.",
+    "backend/server.py:528, :544, :567 all set entry.is_open_now on list/detail/me-info responses — full coverage.",
+    "backend/server.py:756-775 courier location update: after DB write, only broadcasts to customers whose orders are actively assigned (status in accepted/preparing/out_for_delivery). WS send is fire-and-forget; a disconnected socket is silently removed — safe path.",
+    "frontend/src/components/HoursEditor.tsx: excellent — normalizeHours() gracefully handles null/partial input; isValidHHMM regex is correct; apply-mon-to-all deep-copies the mon slot into every day; testIDs match spec exactly (hours-row-{day} / hours-open-toggle-{day} / hours-open-{day} / hours-close-{day} / apply-mon-to-all).",
+    "frontend/app/(customer)/restaurant/[id].tsx:138 & :145 correctly wire disabled + opacity 0.4 to `restaurant.is_open_now === false`.",
+    "frontend/app/(customer)/home.tsx:299-315 & :346-348 wire both the corner 'Closed' badge (moon icon) and the 'Restaurant is closed' sub-line to is_open_now===false.",
+    "frontend/src/utils/delivery.ts: haversineKm + estimateEtaRange are pure/deterministic and cleanly separated — unit-testable. formatEtaRange collapses to '~X min' when max-min<=1, and shows '~X–Y min' otherwise; matches spec's '~X–Y min' UI. (Client-side only, no backend contract needed.)",
+    "SUGGESTED unit test for delivery.ts: no test file exists yet in /app/frontend for the haversine/ETA utility — a Jest test would improve coverage but is not strictly required per this iter's scope."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_directdine_iter11.py (new — 16 tests, 100% pass)"
+  ],
+  "success_rate": {"backend": "100% (16/16 iter11 including 5 iter10 campaign-duration regressions)", "frontend": "100% for iter11 scope (HoursEditor + apply-mon-to-all + Closed badge on home + red banner on detail + Add-to-cart dimmed)"},
+  "seed_data_creation": "During testing: (1) toggled Bella Napoli's Thursday to closed then restored, (2) briefly wrote hours={mon..sun open 09:00-22:00} — this IS the final state after restore. Because server local time was 08:35 at the end of the test, is_open_now legitimately reads False until 09:00; this is the desired feature behaviour, not a bug. No orders/menu items/users created.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iter11 backend contract: hours is a Dict[weekday, {closed,open,close}] on Restaurant; is_open_now is computed server-side (server LOCAL time). GET /restaurants and GET /restaurants/{id} both populate is_open_now. POST /orders and /orders/guest return HTTP 400 with detail 'Restaurant is currently closed. Please try again during opening hours.' when closed. PUT /restaurants/me accepts partial hours. Frontend testIDs finalized: hours-row-{mon..sun}, hours-open-toggle-{day}, hours-open-{day}, hours-close-{day}, apply-mon-to-all. When testing at hour-boundary edge (server ~08:xx-09:00 or ~22:xx-23:00 local), remember the restaurant may legitimately show is_open_now=false — this is not a bug; either use hours 00:00-23:59 for open-all-day, or set hours around the current time. Server local time when this test ran: Thursday 08:35."
+}

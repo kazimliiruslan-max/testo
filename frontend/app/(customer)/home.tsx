@@ -24,6 +24,7 @@ interface Restaurant {
   campaign_active?: boolean;
   order_count?: number;
   min_order_value?: number;
+  is_open_now?: boolean;
 }
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -295,22 +296,30 @@ export default function CustomerHome() {
           }
           renderItem={({ item }) => {
             const isOut = loc && item.in_range === false;
+            const isClosed = item.is_open_now === false;
+            const disabled = isOut || isClosed;
             return (
               <Pressable
                 testID={`restaurant-card-${item.id}`}
-                onPress={() => !isOut && router.push(`/(customer)/restaurant/${item.id}`)}
-                style={({ pressed }) => [styles.card, pressed && !isOut && { opacity: 0.9 }, isOut && styles.cardDisabled]}
+                onPress={() => !disabled && router.push(`/(customer)/restaurant/${item.id}`)}
+                style={({ pressed }) => [styles.card, pressed && !disabled && { opacity: 0.9 }, disabled && styles.cardDisabled]}
               >
                 <View>
                   <Image source={{ uri: item.image_url }} style={styles.cardImg} contentFit="cover" />
                   {item.logo_url ? (
                     <Image source={{ uri: item.logo_url }} style={styles.cardLogo} contentFit="cover" />
                   ) : null}
+                  {isClosed && (
+                    <View style={styles.closedBadge}>
+                      <Ionicons name="moon" size={12} color="#fff" />
+                      <Text style={styles.closedBadgeTxt}>{t('closed')}</Text>
+                    </View>
+                  )}
                 </View>
                 <View style={styles.cardBody}>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.cardTitle, isOut && styles.dim]}>{item.name}</Text>
-                    <Text style={[styles.cardCuisine, isOut && styles.dim]} numberOfLines={1}>
+                    <Text style={[styles.cardTitle, disabled && styles.dim]}>{item.name}</Text>
+                    <Text style={[styles.cardCuisine, disabled && styles.dim]} numberOfLines={1}>
                       {item.cuisine} · {item.description}
                     </Text>
                     <View style={styles.cardMeta}>
@@ -332,6 +341,11 @@ export default function CustomerHome() {
                     {isOut && (
                       <Text style={styles.outTag}>
                         <Ionicons name="close-circle" size={12} color={theme.colors.error} /> {t('outOfRange')}
+                      </Text>
+                    )}
+                    {!isOut && isClosed && (
+                      <Text style={styles.outTag}>
+                        <Ionicons name="moon" size={12} color={theme.colors.error} /> {t('restaurantClosed')}
                       </Text>
                     )}
                   </View>
@@ -369,6 +383,8 @@ const styles = StyleSheet.create({
   badgeTxt: { color: theme.colors.brandDark, fontWeight: '700', fontSize: theme.font.sm },
   signInBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.colors.brand, paddingHorizontal: theme.spacing.md, paddingVertical: 8, borderRadius: theme.radius.pill },
   signInBtnTxt: { color: '#fff', fontWeight: '800', fontSize: theme.font.sm },
+  closedBadge: { position: 'absolute', top: theme.spacing.sm, right: theme.spacing.sm, backgroundColor: theme.colors.error, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: theme.spacing.sm, paddingVertical: 4, borderRadius: theme.radius.pill },
+  closedBadgeTxt: { color: '#fff', fontWeight: '800', fontSize: theme.font.xs },
   locBar: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginHorizontal: theme.spacing.lg, marginBottom: theme.spacing.sm, backgroundColor: theme.colors.brandTertiary, paddingHorizontal: theme.spacing.md, paddingVertical: 8, borderRadius: theme.radius.md },
   locBarTxt: { flex: 1, color: theme.colors.brandDark, fontWeight: '600', fontSize: theme.font.sm },
   searchWrap: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginHorizontal: theme.spacing.lg, backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md, paddingHorizontal: theme.spacing.lg, height: 44, marginBottom: theme.spacing.sm },
