@@ -10,6 +10,59 @@ import { api } from '@/src/api/client';
 import { useCart } from '@/src/context/CartContext';
 import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
+import { StarRating } from '@/src/components/StarRating';
+
+interface Review {
+  id: string; stars: number; comment: string;
+  customer_name: string; created_at: string;
+}
+
+function ReviewsSection({ restaurantId }: { restaurantId: string }) {
+  const { t } = useI18n();
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    api.get(`/restaurants/${restaurantId}/reviews?limit=8`)
+      .then((r) => { if (alive) setReviews(r.data || []); })
+      .catch(() => {})
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [restaurantId]);
+
+  return (
+    <View style={reviewStyles.section}>
+      <Text style={reviewStyles.header}>{t('reviewsTitle')}</Text>
+      {loading ? (
+        <ActivityIndicator color={theme.colors.brand} />
+      ) : reviews.length === 0 ? (
+        <Text style={reviewStyles.empty}>{t('noReviews')}</Text>
+      ) : (
+        reviews.map((r) => (
+          <View key={r.id} style={reviewStyles.card}>
+            <View style={reviewStyles.cardTop}>
+              <Text style={reviewStyles.name}>{r.customer_name}</Text>
+              <StarRating value={r.stars} size={14} readonly />
+            </View>
+            {r.comment ? <Text style={reviewStyles.comment}>{r.comment}</Text> : null}
+            <Text style={reviewStyles.date}>{new Date(r.created_at).toLocaleDateString()}</Text>
+          </View>
+        ))
+      )}
+    </View>
+  );
+}
+
+const reviewStyles = StyleSheet.create({
+  section: { padding: theme.spacing.lg, paddingBottom: 120 },
+  header: { fontSize: theme.font.lg, fontWeight: '800', color: theme.colors.onSurface, marginBottom: theme.spacing.md },
+  empty: { color: theme.colors.onSurfaceTertiary, fontStyle: 'italic' },
+  card: { backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md, padding: theme.spacing.md, marginBottom: theme.spacing.sm },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  name: { fontWeight: '800', color: theme.colors.onSurface, fontSize: theme.font.base },
+  comment: { color: theme.colors.onSurfaceSecondary, fontSize: theme.font.sm, marginTop: 4 },
+  date: { color: theme.colors.onSurfaceTertiary, fontSize: theme.font.xs, marginTop: 6 },
+});
 
 export default function RestaurantDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -121,10 +174,20 @@ export default function RestaurantDetail() {
               // display_price == price while the "regular" price is price * (1 + fee/100).
               const regularPrice = item.price * (1 + feePct / 100);
               const hasDiscount = restaurant.campaign_active && feePct > 0 && regularPrice > shownPrice + 0.01;
+              const isUnavailable = item.available === false;
+              const disabled = restaurant.is_open_now === false || isUnavailable;
               return (
-              <View style={styles.menuItem}>
+              <View style={[styles.menuItem, isUnavailable && { opacity: 0.55 }]}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.menuName}>{item.name}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <Text style={styles.menuName}>{item.name}</Text>
+                    {isUnavailable && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: theme.colors.error, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 }}>
+                        <Ionicons name="close-circle" size={12} color="#fff" />
+                        <Text style={{ color: '#fff', fontWeight: '800', fontSize: theme.font.xs }}>{t('outOfStock')}</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={styles.menuDesc}>{item.description}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: theme.spacing.xs }}>
                     <Text style={[styles.menuPrice, hasDiscount && { color: theme.colors.error }]}>₺{shownPrice.toFixed(2)}</Text>
@@ -135,14 +198,14 @@ export default function RestaurantDetail() {
                 </View>
                 <Pressable
                   testID={`add-item-${item.id}`}
-                  disabled={restaurant.is_open_now === false}
+                  disabled={disabled}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                     add(restaurant.id, restaurant.name, {
                       menu_item_id: item.id, name: item.name, price: shownPrice,
                     });
                   }}
-                  style={[styles.addBtn, restaurant.is_open_now === false && { opacity: 0.4 }]}
+                  style={[styles.addBtn, disabled && { opacity: 0.4 }]}
                 >
                   <Ionicons name="add" size={22} color={theme.colors.onBrand} />
                 </Pressable>
@@ -151,6 +214,7 @@ export default function RestaurantDetail() {
             }}
           />
         </View>
+        <ReviewsSection restaurantId={restaurant.id} />
       </ScrollView>
 
       {cartCount > 0 && (

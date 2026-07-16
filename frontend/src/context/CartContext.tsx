@@ -12,6 +12,7 @@ interface CartCtx {
   restaurantName: string | null;
   items: CartItem[];
   add: (restaurantId: string, restaurantName: string, item: Omit<CartItem, 'quantity'>) => void;
+  addBatch: (restaurantId: string, restaurantName: string, batch: CartItem[]) => void;
   remove: (menu_item_id: string) => void;
   clear: () => void;
   total: number;
@@ -54,6 +55,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  /** Replace the entire cart with `batch` items for the given restaurant (used by "Reorder"). */
+  const addBatch = useCallback((rid: string, rname: string, batch: CartItem[]) => {
+    setRestaurantId(rid);
+    setRestaurantName(rname);
+    // Merge duplicate menu_item_ids
+    const merged = new Map<string, CartItem>();
+    for (const it of batch) {
+      const prev = merged.get(it.menu_item_id);
+      if (prev) merged.set(it.menu_item_id, { ...prev, quantity: prev.quantity + it.quantity });
+      else merged.set(it.menu_item_id, { ...it });
+    }
+    setItems(Array.from(merged.values()));
+  }, []);
+
   const clear = useCallback(() => {
     setItems([]);
     setRestaurantId(null);
@@ -63,7 +78,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const total = useMemo(() => items.reduce((s, i) => s + i.price * i.quantity, 0), [items]);
 
   return (
-    <Ctx.Provider value={{ restaurantId, restaurantName, items, add, remove, clear, total }}>
+    <Ctx.Provider value={{ restaurantId, restaurantName, items, add, addBatch, remove, clear, total }}>
       {children}
     </Ctx.Provider>
   );

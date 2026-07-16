@@ -270,6 +270,16 @@ class MenuItemCreate(BaseModel):
     image_base64: Optional[str] = None
     available: Optional[bool] = True
 
+class MenuItemUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    delivery_fee_pct: Optional[float] = None
+    category: Optional[str] = None
+    image_url: Optional[str] = None
+    image_base64: Optional[str] = None
+    available: Optional[bool] = None
+
 class CourierInfo(BaseModel):
     id: str  # user id
     name: str
@@ -362,6 +372,23 @@ class OrderStatusUpdate(BaseModel):
 
 class AssignCourierInput(BaseModel):
     courier_id: str
+
+
+# ---------- Reviews ----------
+class ReviewCreate(BaseModel):
+    order_id: str
+    stars: int = Field(ge=1, le=5)
+    comment: Optional[str] = ""
+
+class Review(BaseModel):
+    id: str
+    order_id: str
+    customer_id: str
+    customer_name: str
+    restaurant_id: str
+    stars: int
+    comment: str = ""
+    created_at: str
 
 
 # ---------- Address Book ----------
@@ -714,6 +741,29 @@ async def create_menu_item(data: MenuItemCreate, user: dict = Depends(require_ro
     obj.display_price = _compute_display_price(obj.price, obj.delivery_fee_pct, _rest_campaign_active(rest or {}))
     return obj
 
+@api_router.patch("/menu/{item_id}", response_model=MenuItem)
+async def update_menu_item(item_id: str, data: MenuItemUpdate, user: dict = Depends(require_roles('restaurant_owner'))):
+    doc = await db.menu_items.find_one({'id': item_id, 'restaurant_id': user['restaurant_id']}, {'_id': 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Item not found")
+    patch: Dict[str, Any] = {}
+    for k in ['name', 'description', 'price', 'delivery_fee_pct', 'category', 'image_url', 'available']:
+        v = getattr(data, k)
+        if v is not None:
+            patch[k] = v
+    if data.image_base64:
+        patch['image_url'] = f"data:image/jpeg;base64,{data.image_base64}"
+    # recompute display_price if price/fee touched
+    if 'price' in patch or 'delivery_fee_pct' in patch:
+        p = patch.get('price', doc.get('price', 0.0))
+        pct = patch.get('delivery_fee_pct', doc.get('delivery_fee_pct', 0.0))
+        patch['display_price'] = round(float(p) * (1 + float(pct) / 100), 2)
+    if patch:
+        await db.menu_items.update_one({'id': item_id}, {'$set': patch})
+    doc = await db.menu_items.find_one({'id': item_id}, {'_id': 0})
+    return MenuItem(**doc)
+
+
 @api_router.delete("/menu/{item_id}")
 async def delete_menu_item(item_id: str, user: dict = Depends(require_roles('restaurant_owner'))):
     res = await db.menu_items.delete_one({'id': item_id, 'restaurant_id': user['restaurant_id']})
@@ -934,6 +984,16 @@ async def create_order_as_guest(data: GuestOrderCreate):
         raise HTTPException(status_code=404, detail="Restaurant not found")
     if not is_restaurant_open_now(rest.get('hours')):
         raise HTTPException(status_code=400, detail="Restaurant is currently closed. Please try again during opening hours.")
+    # Enforce availability of every item in the order
+    item_ids = [i.menu_item_id for i in data.items]
+    if item_ids:
+        unavailable = await db.menu_items.find(
+            {'id': {'$in': item_ids}, 'restaurant_id': data.restaurant_id, 'available': False},
+            {'_id': 0, 'name': 1}
+        ).to_list(50)
+        if unavailable:
+            names = ', '.join(u['name'] for u in unavailable)
+            raise HTTPException(status_code=400, detail=f"These items are currently unavailable: {names}. Please remove them and try again.")
     total = sum(i.price * i.quantity for i in data.items)
     min_val = float(rest.get('min_order_value') or 0.0)
     if min_val > 0 and total < min_val:
@@ -972,6 +1032,16 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles('cu
         raise HTTPException(status_code=404, detail="Restaurant not found")
     if not is_restaurant_open_now(rest.get('hours')):
         raise HTTPException(status_code=400, detail="Restaurant is currently closed. Please try again during opening hours.")
+    # Enforce availability of every item in the order
+    item_ids = [i.menu_item_id for i in data.items]
+    if item_ids:
+        unavailable = await db.menu_items.find(
+            {'id': {'$in': item_ids}, 'restaurant_id': data.restaurant_id, 'available': False},
+            {'_id': 0, 'name': 1}
+        ).to_list(50)
+        if unavailable:
+            names = ', '.join(u['name'] for u in unavailable)
+            raise HTTPException(status_code=400, detail=f"These items are currently unavailable: {names}. Please remove them and try again.")
     total = sum(i.price * i.quantity for i in data.items)
     min_val = float(rest.get('min_order_value') or 0.0)
     if min_val > 0 and total < min_val:
@@ -1177,6 +1247,52 @@ async def delete_address(aid: str, user: dict = Depends(require_roles('customer'
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Address not found")
     return {'ok': True}
+
+
+# ---------- Reviews ----------
+async def _recompute_restaurant_rating(restaurant_id: str) -> float:
+    docs = await db.reviews.find({'restaurant_id': restaurant_id}, {'_id': 0, 'stars': 1}).to_list(2000)
+    avg = 4.5 if not docs else round(sum(d['stars'] for d in docs) / len(docs), 2)
+    await db.restaurants.update_one({'id': restaurant_id}, {'$set': {'rating': avg}})
+    return avg
+
+
+@api_router.post("/reviews", response_model=Review)
+async def create_review(data: ReviewCreate, user: dict = Depends(require_roles('customer'))):
+    order = await db.orders.find_one({'id': data.order_id, 'customer_id': user['id']}, {'_id': 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.get('status') != 'delivered':
+        raise HTTPException(status_code=400, detail="You can only review delivered orders")
+    if await db.reviews.find_one({'order_id': data.order_id}, {'_id': 0}):
+        raise HTTPException(status_code=400, detail="You have already reviewed this order")
+    review = {
+        'id': str(uuid.uuid4()),
+        'order_id': data.order_id,
+        'customer_id': user['id'],
+        'customer_name': user.get('name', 'Customer'),
+        'restaurant_id': order['restaurant_id'],
+        'stars': int(data.stars),
+        'comment': (data.comment or '').strip()[:500],
+        'created_at': now_iso(),
+    }
+    await db.reviews.insert_one(review)
+    await _recompute_restaurant_rating(order['restaurant_id'])
+    return Review(**review)
+
+
+@api_router.get("/restaurants/{rid}/reviews", response_model=List[Review])
+async def list_restaurant_reviews(rid: str, limit: int = 20):
+    docs = await db.reviews.find({'restaurant_id': rid}, {'_id': 0}).sort('created_at', -1).to_list(max(1, min(limit, 100)))
+    return [Review(**d) for d in docs]
+
+
+@api_router.get("/orders/{oid}/review")
+async def get_order_review(oid: str, user: dict = Depends(require_roles('customer', 'restaurant_owner'))):
+    doc = await db.reviews.find_one({'order_id': oid}, {'_id': 0})
+    if not doc:
+        return None
+    return Review(**doc)
 
 
 # ---------- Seeding ----------
