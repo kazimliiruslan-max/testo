@@ -1289,6 +1289,14 @@ async def list_restaurant_reviews(rid: str, limit: int = 20):
 
 @api_router.get("/orders/{oid}/review")
 async def get_order_review(oid: str, user: dict = Depends(require_roles('customer', 'restaurant_owner'))):
+    order = await db.orders.find_one({'id': oid}, {'_id': 0, 'customer_id': 1, 'restaurant_id': 1})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    # Only the customer who placed the order or the restaurant owner can view it
+    if user['role'] == 'customer' and order['customer_id'] != user['id']:
+        raise HTTPException(status_code=403, detail="Not allowed")
+    if user['role'] == 'restaurant_owner' and order['restaurant_id'] != user.get('restaurant_id'):
+        raise HTTPException(status_code=403, detail="Not allowed")
     doc = await db.reviews.find_one({'order_id': oid}, {'_id': 0})
     if not doc:
         return None
