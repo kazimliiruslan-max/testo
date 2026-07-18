@@ -214,6 +214,8 @@ const strings = {
     openWebPortal: 'Open Restaurant Portal',
     courierAppNote: 'Couriers use this mobile app to receive orders and mark deliveries as complete. Invite them from the web portal.',
     acceptInviteSubtitle: 'Choose your password — you\'ll be automatically signed in to your courier dashboard.',
+    bizOrLogin: 'or',
+    bizSignInExisting: 'Sign in to my restaurant account',
   },
   tr: {
     welcome: 'EasYum\'a Hoş Geldiniz',
@@ -415,6 +417,8 @@ const strings = {
     openWebPortal: 'Restoran Portalını Aç',
     courierAppNote: 'Kuryeler bu mobil uygulamayı sipariş almak ve teslimatları tamamlamak için kullanır. Onları web portalından davet edin.',
     acceptInviteSubtitle: 'Şifrenizi seçin — kurye panelinize otomatik olarak giriş yapılacaksınız.',
+    bizOrLogin: 'veya',
+    bizSignInExisting: 'Restoran hesabımla giriş yap',
   },
 };
 

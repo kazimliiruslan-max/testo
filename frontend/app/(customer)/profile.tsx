@@ -450,6 +450,24 @@ export default function CustomerProfile() {
 
             <Text style={styles.bizUrl}>{WEB_PORTAL_URL}</Text>
 
+            {!user && (
+              <>
+                <View style={styles.bizDivider}>
+                  <View style={styles.bizDividerLine} />
+                  <Text style={styles.bizDividerTxt}>{t('bizOrLogin')}</Text>
+                  <View style={styles.bizDividerLine} />
+                </View>
+                <Pressable
+                  testID="biz-signin-btn"
+                  onPress={() => { setShowBusiness(false); router.push('/(auth)/login'); }}
+                  style={styles.bizSignInBtn}
+                >
+                  <Ionicons name="log-in-outline" size={18} color={theme.colors.brand} />
+                  <Text style={styles.bizSignInTxt}>{t('bizSignInExisting')}</Text>
+                </Pressable>
+              </>
+            )}
+
             <Text style={styles.bizFootnote}>{t('courierAppNote')}</Text>
 
             <Pressable testID="close-business-modal" onPress={() => setShowBusiness(false)} style={styles.bizClose}>
@@ -499,6 +517,11 @@ const styles = StyleSheet.create({
   bizFootnote: { color: theme.colors.onSurfaceSecondary, fontSize: theme.font.sm, textAlign: 'center', marginTop: theme.spacing.lg, lineHeight: 18 },
   bizClose: { marginTop: theme.spacing.md, paddingVertical: 8, paddingHorizontal: theme.spacing.xl },
   bizCloseTxt: { color: theme.colors.onSurfaceSecondary, fontWeight: '700' },
+  bizDivider: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginTop: theme.spacing.lg, marginBottom: theme.spacing.md, alignSelf: 'stretch' },
+  bizDividerLine: { flex: 1, height: 1, backgroundColor: theme.colors.border },
+  bizDividerTxt: { color: theme.colors.onSurfaceTertiary, fontSize: theme.font.sm, fontWeight: '600' },
+  bizSignInBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: theme.spacing.md, borderRadius: theme.radius.pill, borderWidth: 1.5, borderColor: theme.colors.brand, alignSelf: 'stretch' },
+  bizSignInTxt: { color: theme.colors.brand, fontWeight: '800', fontSize: theme.font.base },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, padding: theme.spacing.lg, backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md },
   logoutTxt: { color: theme.colors.error, fontWeight: '700', fontSize: theme.font.lg },
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
