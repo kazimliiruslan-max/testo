@@ -47,15 +47,19 @@ export default function CustomerHome() {
   const [cuisine, setCuisine] = useState('All');
   const [search, setSearch] = useState('');
   const [showOutOfRange, setShowOutOfRange] = useState(false);
+  const [minRating, setMinRating] = useState<number>(0);
+  const [showFilters, setShowFilters] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const params: any = {};
       if (loc) { params.lat = loc.lat; params.lng = loc.lng; }
+      if (search.trim()) params.search = search.trim();
+      if (minRating > 0) params.min_rating = minRating;
       const res = await api.get('/restaurants', { params });
       setRestaurants(res.data);
     } finally { setLoading(false); setRefreshing(false); }
-  }, [loc]);
+  }, [loc, search, minRating]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -129,7 +133,46 @@ export default function CustomerHome() {
           value={search}
           onChangeText={setSearch}
         />
+        <Pressable
+          testID="toggle-filters-btn"
+          onPress={() => setShowFilters((v) => !v)}
+          style={[styles.filterBtn, (showFilters || minRating > 0) && styles.filterBtnActive]}
+        >
+          <Ionicons
+            name="options-outline"
+            size={18}
+            color={showFilters || minRating > 0 ? '#fff' : theme.colors.brand}
+          />
+        </Pressable>
       </View>
+
+      {showFilters && (
+        <View style={styles.filterPanel}>
+          <Text style={styles.filterLabel}>{t('minRating')}</Text>
+          <View style={styles.ratingChipsRow}>
+            {[0, 3, 3.5, 4, 4.5].map((r) => {
+              const active = minRating === r;
+              return (
+                <Pressable
+                  key={r}
+                  testID={`min-rating-${r}`}
+                  onPress={() => setMinRating(r)}
+                  style={[styles.ratingChip, active && styles.ratingChipActive]}
+                >
+                  <Ionicons
+                    name={r === 0 ? 'sparkles-outline' : 'star'}
+                    size={12}
+                    color={active ? '#fff' : theme.colors.accent}
+                  />
+                  <Text style={[styles.ratingChipTxt, active && { color: '#fff' }]}>
+                    {r === 0 ? t('any') : `${r}+`}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      )}
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: 60 }} size="large" color={theme.colors.brand} />
@@ -389,6 +432,14 @@ const styles = StyleSheet.create({
   locBarTxt: { flex: 1, color: theme.colors.brandDark, fontWeight: '600', fontSize: theme.font.sm },
   searchWrap: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginHorizontal: theme.spacing.lg, backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md, paddingHorizontal: theme.spacing.lg, height: 44, marginBottom: theme.spacing.sm },
   searchInput: { flex: 1, fontSize: theme.font.base, color: theme.colors.onSurface },
+  filterBtn: { padding: 6, borderRadius: theme.radius.md, backgroundColor: 'rgba(46,204,113,0.10)' },
+  filterBtnActive: { backgroundColor: theme.colors.brand },
+  filterPanel: { marginHorizontal: theme.spacing.lg, marginBottom: theme.spacing.sm, backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md, padding: theme.spacing.md, gap: theme.spacing.sm },
+  filterLabel: { fontSize: theme.font.sm, fontWeight: '700', color: theme.colors.onSurfaceSecondary, textTransform: 'uppercase' },
+  ratingChipsRow: { flexDirection: 'row', gap: theme.spacing.sm, flexWrap: 'wrap' },
+  ratingChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: theme.spacing.md, paddingVertical: 6, borderRadius: theme.radius.pill, backgroundColor: '#fff', borderWidth: 1, borderColor: theme.colors.border },
+  ratingChipActive: { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
+  ratingChipTxt: { fontWeight: '700', color: theme.colors.onSurface, fontSize: theme.font.sm },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: theme.spacing.lg, marginTop: theme.spacing.md, marginBottom: theme.spacing.sm },
   sectionTitle: { fontSize: theme.font.lg, fontWeight: '800', color: theme.colors.onSurface },
   sponsoredTag: { flexDirection: 'row', gap: 4, alignItems: 'center', backgroundColor: theme.colors.brandTertiary, paddingHorizontal: theme.spacing.sm, paddingVertical: 3, borderRadius: theme.radius.pill },

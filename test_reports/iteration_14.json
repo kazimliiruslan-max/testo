@@ -1,0 +1,32 @@
+{
+  "summary": "Iter14 backend testing complete — 24/24 PASS in 5.58s (test_directdine_iter14.py). SEARCH/FILTER: (1) GET /api/restaurants?search=pizza returns only Pizza matches (name/cuisine/description contain 'pizza' case-insensitive). (2) search=burger/BURGER/Burger yield identical ID lists (case-insensitive confirmed). (3) search=wood-fired surfaces Bella Napoli (description-scoped match). (4) min_rating=4.5 returns only restaurants with rating>=4.5; min_rating=4.85 excludes Bella Napoli (4.8). (5) min_rating=4.5 combined with lat=41.04/lng=28.98 → distance_km computed on every entry AND sorted by (not in_range, distance_km asc). (6) sort=rating returns descending by rating; sort=name returns ascending by name (lowercase). OWNER ANALYTICS: GET /api/owner/analytics as owner1 returns all 13 required keys with correct types — days:int, total_orders/delivered/cancelled/review_count:int, revenue/avg_order_value/avg_rating:number|null, top_items:list[{name,qty,revenue}], peak_hour:0-23|null, peak_weekday:0-6|null, hour_histogram len=24, weekday_histogram len=7. Also verified days=7 respected, days=5000 clamped to 365, customer→403, unauth→401. REGRESSION: campaign_start days∈{1,3,7,14,30} all → 200 campaign_active=true then stop → false. min_order_value=500 blocks small order (400 'minimum order'). delivery_radius_km=0 → 422. All-days-closed → 400 'closed'. available=false → 400 'unavailable'. Review before delivered → 400 'delivered'. PUT /restaurants/me {lat,lng,address} persists and GET /restaurants/me/info re-reads them. Bella Napoli restored to defaults at teardown (lat=41.0369, lng=28.985, address='Istiklal Cad. No:1, Beyoglu, Istanbul', hours all-open, radius=5, min_order=0). Backend regression is 100% green.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_directdine_iter14.py",
+    "/app/test_reports/pytest/pytest_iter14.xml"
+  ],
+  "action_items": [
+    "(Non-blocking) Dark mode: ThemeContext infrastructure exists but StyleSheet.create captures light colors at module load — main agent's next iteration should migrate screens to consume theme tokens at render time (useTheme() inside components). Not tested this iter per the request note.",
+    "(Carry-over) server.py is now ~1600+ lines — still recommend splitting into routers (auth, restaurants, orders, couriers, reviews, analytics)."
+  ],
+  "critical_code_review_comments": [
+    "backend/server.py:541-582 list_restaurants — `search` uses re.escape() to prevent regex injection and $regex/$options:'i' for case-insensitivity across name/cuisine/description via $or. min_rating uses $gte on the rating field. sort='rating' sorts in Python (reverse=True); sort='name' lowercases for stable case-insensitive alphabetical. Distance sort applied only when no explicit sort AND lat/lng provided. Correct and defensive.",
+    "backend/server.py:707-781 owner_analytics — clamps days to [1,365]; iterates once over orders for total/delivered/cancelled/revenue/hour_hist/weekday_hist/item_stats; top_items limited to 5 by qty desc; peak_* is None when histogram is all-zero (guarded by any()). avg_rating is None when no reviews in window. Shape matches spec. Good.",
+    "backend/server.py:707 owner_analytics — no response_model declared (returns plain dict). Consider adding a Pydantic model for OpenAPI schema completeness, but not a bug.",
+    "backend/server.py:764 review_stars comprehension calls parse_ts twice per row — minor CPU waste on cold path, acceptable at current scale."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_directdine_iter14.py (new — 24 tests, 100% pass)"
+  ],
+  "success_rate": {"backend": "100% (24/24 iter14)", "frontend": "not tested this iter (per review_request: backend only; frontend already visually confirmed per main agent)"},
+  "seed_data_creation": "Ephemeral test-only mutations, all reverted via try/finally + module-scoped autouse teardown: (a) Bella Napoli min_order_value briefly set to 500 → restored to 0. (b) hours briefly all-closed → restored to all-open. (c) First menu item briefly set available=false → restored true. (d) One TEST_review_iter14 order created then cancelled. (e) lat/lng/address briefly set to (41.05, 29.02, 'Kadikoy Iter14') → restored to defaults (41.0369, 28.985, 'Istiklal Cad. No:1, Beyoglu, Istanbul'). Module teardown re-asserts defaults. No manual cleanup needed by main agent.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iter14 added: (1) GET /api/restaurants query params `search` (name/cuisine/description regex-ci), `min_rating` (rating>=), `sort` ('rating' desc | 'name' asc). Distance sort still kicks in only when lat/lng provided AND sort not specified. (2) GET /api/owner/analytics?days=<1..365> returns the full shape verified above — safe to consume from frontend. (3) Dark mode ThemeContext is present but screens currently use static StyleSheet — full conversion is deferred. All 24 tests + iter13's 14 tests + iter12 regression remain green. Bella Napoli restored to defaults."
+}

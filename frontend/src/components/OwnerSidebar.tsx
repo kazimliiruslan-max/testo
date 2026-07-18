@@ -10,13 +10,14 @@ import { useI18n } from '@/src/context/I18nContext';
 interface Item {
   key: string;
   route: string;
-  labelKey: 'tab_owner_orders' | 'tab_owner_menu' | 'tab_owner_couriers' | 'tab_profile';
+  labelKey: 'tab_owner_orders' | 'tab_owner_menu' | 'tab_owner_couriers' | 'tab_profile' | 'tab_analytics';
   icon: keyof typeof Ionicons.glyphMap;
 }
 
 const ITEMS: Item[] = [
   { key: 'dashboard', route: '/(owner)/dashboard', labelKey: 'tab_owner_orders', icon: 'list-outline' },
   { key: 'menu', route: '/(owner)/menu', labelKey: 'tab_owner_menu', icon: 'fast-food-outline' },
+  { key: 'analytics', route: '/(owner)/analytics', labelKey: 'tab_analytics', icon: 'bar-chart-outline' },
   { key: 'couriers', route: '/(owner)/couriers', labelKey: 'tab_owner_couriers', icon: 'bicycle-outline' },
   { key: 'profile', route: '/(owner)/profile', labelKey: 'tab_profile', icon: 'person-outline' },
 ];

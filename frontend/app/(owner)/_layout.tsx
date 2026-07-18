@@ -30,6 +30,10 @@ export default function OwnerTabsLayout() {
             title: t('tab_owner_menu'),
             tabBarIcon: ({ color, size }) => <Ionicons name="fast-food-outline" size={size} color={color} />,
           }} />
+          <Tabs.Screen name="analytics" options={{
+            title: t('tab_analytics'),
+            tabBarIcon: ({ color, size }) => <Ionicons name="bar-chart-outline" size={size} color={color} />,
+          }} />
           <Tabs.Screen name="couriers" options={{
             title: t('tab_owner_couriers'),
             tabBarIcon: ({ color, size }) => <Ionicons name="bicycle-outline" size={size} color={color} />,

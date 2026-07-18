@@ -10,6 +10,7 @@ import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
 import { HoursEditor, DEFAULT_HOURS, normalizeHours, isValidHHMM, WEEKDAYS as WK, HoursMap } from '@/src/components/HoursEditor';
 import LocationPicker, { PickedLocation } from '@/src/components/LocationPicker';
+import { useTheme } from '@/src/context/ThemeContext';
 
 // URL to the desktop web admin panel (same origin as the site).
 const WEB_PORTAL_URL = (process.env.EXPO_PUBLIC_BACKEND_URL || '').replace(/\/$/, '') || 'https://easyum.app';
@@ -21,6 +22,7 @@ interface SavedAddress {
 export default function CustomerProfile() {
   const { user, logout, refresh } = useAuth();
   const { t, lang, setLang } = useI18n();
+  const { preference: themePreference, setMode: setThemeMode } = useTheme();
   const router = useRouter();
   const [showRestaurantSetup, setShowRestaurantSetup] = useState(false);
   const [restName, setRestName] = useState('');
@@ -218,6 +220,22 @@ export default function CustomerProfile() {
           </Pressable>
           <Pressable testID="profile-lang-tr" onPress={() => setLang('tr')} style={[styles.langBtn, lang === 'tr' && styles.langBtnActive]}>
             <Text style={[styles.langTxt, lang === 'tr' && styles.langTxtActive]}>Türkçe</Text>
+          </Pressable>
+        </View>
+
+        <Text style={styles.sectionLabel}>{t('appearance')}</Text>
+        <View style={styles.langRow}>
+          <Pressable testID="theme-light" onPress={() => setThemeMode('light')} style={[styles.langBtn, themePreference === 'light' && styles.langBtnActive]}>
+            <Ionicons name="sunny" size={16} color={themePreference === 'light' ? '#fff' : theme.colors.onSurface} />
+            <Text style={[styles.langTxt, themePreference === 'light' && styles.langTxtActive]}>{t('themeLight')}</Text>
+          </Pressable>
+          <Pressable testID="theme-dark" onPress={() => setThemeMode('dark')} style={[styles.langBtn, themePreference === 'dark' && styles.langBtnActive]}>
+            <Ionicons name="moon" size={16} color={themePreference === 'dark' ? '#fff' : theme.colors.onSurface} />
+            <Text style={[styles.langTxt, themePreference === 'dark' && styles.langTxtActive]}>{t('themeDark')}</Text>
+          </Pressable>
+          <Pressable testID="theme-system" onPress={() => setThemeMode('system')} style={[styles.langBtn, themePreference === 'system' && styles.langBtnActive]}>
+            <Ionicons name="phone-portrait-outline" size={16} color={themePreference === 'system' ? '#fff' : theme.colors.onSurface} />
+            <Text style={[styles.langTxt, themePreference === 'system' && styles.langTxtActive]}>{t('themeSystem')}</Text>
           </Pressable>
         </View>
 

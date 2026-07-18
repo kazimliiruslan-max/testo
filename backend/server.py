@@ -14,6 +14,7 @@ import httpx
 import resend
 import asyncio
 import math
+import re
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Literal, Dict, Any
@@ -538,10 +539,23 @@ class RestaurantWithDistance(Restaurant):
 
 
 @api_router.get("/restaurants", response_model=List[RestaurantWithDistance])
-async def list_restaurants(cuisine: Optional[str] = None, lat: Optional[float] = None, lng: Optional[float] = None):
-    q = {'subscription_active': True}
+async def list_restaurants(
+    cuisine: Optional[str] = None,
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
+    search: Optional[str] = None,
+    min_rating: Optional[float] = None,
+    sort: Optional[str] = None,  # 'rating' | 'distance' | 'name'
+):
+    q: Dict[str, Any] = {'subscription_active': True}
     if cuisine and cuisine != 'All':
         q['cuisine'] = cuisine
+    if search:
+        # Case-insensitive contains against name + cuisine + description
+        rx = {'$regex': re.escape(search.strip()), '$options': 'i'}
+        q['$or'] = [{'name': rx}, {'cuisine': rx}, {'description': rx}]
+    if min_rating is not None:
+        q['rating'] = {'$gte': float(min_rating)}
     docs = await db.restaurants.find(q, {'_id': 0}).to_list(500)
     out: List[RestaurantWithDistance] = []
     for d in docs:
@@ -558,7 +572,12 @@ async def list_restaurants(cuisine: Optional[str] = None, lat: Optional[float] =
             entry.distance_km = round(dist, 2)
             entry.in_range = dist <= (rest.delivery_radius_km or 5.0)
         out.append(entry)
-    if lat is not None and lng is not None:
+    # Default: distance if location provided, else no sort
+    if sort == 'rating':
+        out.sort(key=lambda r: r.rating, reverse=True)
+    elif sort == 'name':
+        out.sort(key=lambda r: r.name.lower())
+    elif lat is not None and lng is not None:
         out.sort(key=lambda r: (not r.in_range, r.distance_km if r.distance_km is not None else 9e9))
     return out
 
@@ -683,6 +702,83 @@ async def owner_stats(period: str = 'month', user: dict = Depends(require_roles(
         current_avg=avg, previous_total=round(p_total, 2), previous_orders=len(previous),
         change_pct=change_pct, top_item=top_item, top_item_count=top_count,
     )
+
+
+@api_router.get("/owner/analytics")
+async def owner_analytics(days: int = 30, user: dict = Depends(require_roles('restaurant_owner'))):
+    """Detailed analytics for restaurant owner: best-selling items, peak hours,
+    order status breakdown, avg rating over the last `days` days."""
+    from datetime import datetime, timedelta, timezone
+    days = max(1, min(days, 365))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    orders = await db.orders.find(
+        {'restaurant_id': user['restaurant_id']},
+        {'_id': 0}
+    ).to_list(10000)
+
+    def parse_ts(s: str):
+        try:
+            return datetime.fromisoformat(s)
+        except Exception:
+            return None
+
+    delivered = 0
+    cancelled = 0
+    total_revenue = 0.0
+    total_order_count = 0
+    item_stats: Dict[str, Dict[str, Any]] = {}
+    hour_hist = [0] * 24
+    weekday_hist = [0] * 7  # 0 = Mon
+    for o in orders:
+        ts = parse_ts(o.get('created_at', ''))
+        if not ts or ts < since:
+            continue
+        total_order_count += 1
+        hour_hist[ts.hour] += 1
+        weekday_hist[ts.weekday()] += 1
+        st = o.get('status')
+        if st == 'delivered':
+            delivered += 1
+            total_revenue += float(o.get('total', 0.0) or 0.0)
+        elif st == 'cancelled':
+            cancelled += 1
+        for it in o.get('items', []):
+            name = it.get('name', 'Unknown')
+            qty = int(it.get('quantity', 1))
+            price = float(it.get('price', 0.0) or 0.0)
+            s = item_stats.setdefault(name, {'name': name, 'qty': 0, 'revenue': 0.0})
+            s['qty'] += qty
+            s['revenue'] += qty * price
+
+    top_items = sorted(item_stats.values(), key=lambda x: x['qty'], reverse=True)[:5]
+    for t in top_items:
+        t['revenue'] = round(t['revenue'], 2)
+    peak_hour = int(max(range(24), key=lambda i: hour_hist[i])) if any(hour_hist) else None
+    peak_weekday = int(max(range(7), key=lambda i: weekday_hist[i])) if any(weekday_hist) else None
+
+    # Rating over the window
+    review_docs = await db.reviews.find(
+        {'restaurant_id': user['restaurant_id']},
+        {'_id': 0, 'stars': 1, 'created_at': 1}
+    ).to_list(5000)
+    review_stars = [r['stars'] for r in review_docs if parse_ts(r.get('created_at', '')) and parse_ts(r['created_at']) >= since]
+    avg_rating = round(sum(review_stars) / len(review_stars), 2) if review_stars else None
+
+    return {
+        'days': days,
+        'total_orders': total_order_count,
+        'delivered': delivered,
+        'cancelled': cancelled,
+        'revenue': round(total_revenue, 2),
+        'avg_order_value': round(total_revenue / delivered, 2) if delivered else 0.0,
+        'top_items': top_items,
+        'peak_hour': peak_hour,
+        'peak_weekday': peak_weekday,
+        'hour_histogram': hour_hist,
+        'weekday_histogram': weekday_hist,
+        'avg_rating': avg_rating,
+        'review_count': len(review_stars),
+    }
 
 
 # ---------- Menu Routes ----------

@@ -12,6 +12,7 @@ import { AuthProvider } from "@/src/context/AuthContext";
 import { I18nProvider } from "@/src/context/I18nContext";
 import { CartProvider } from "@/src/context/CartContext";
 import { LocationProvider } from "@/src/context/LocationContext";
+import { ThemeProvider } from "@/src/context/ThemeContext";
 
 LogBox.ignoreAllLogs(true);
 
@@ -79,15 +80,17 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <I18nProvider>
-          <AuthProvider>
-            <LocationProvider>
-              <CartProvider>
-                <Stack screenOptions={{ headerShown: false }} />
-              </CartProvider>
-            </LocationProvider>
-          </AuthProvider>
-        </I18nProvider>
+        <ThemeProvider>
+          <I18nProvider>
+            <AuthProvider>
+              <LocationProvider>
+                <CartProvider>
+                  <Stack screenOptions={{ headerShown: false }} />
+                </CartProvider>
+              </LocationProvider>
+            </AuthProvider>
+          </I18nProvider>
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

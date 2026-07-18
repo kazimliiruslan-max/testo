@@ -63,6 +63,7 @@ const strings = {
     // Owner
     tab_owner_orders: 'Orders',
     tab_owner_menu: 'Menu',
+    tab_analytics: 'Analytics',
     tab_owner_couriers: 'Couriers',
     subscriptionActive: 'Subscription Active',
     activeOrders: 'Active Orders',
@@ -219,6 +220,20 @@ const strings = {
     restaurantLocation: 'Restaurant location',
     restaurantLocationHelp: 'Pin your restaurant on the map. Customers will only see you if they\'re within your delivery radius.',
     trackCourier: 'Track courier',
+    minRating: 'Minimum rating',
+    any: 'Any',
+    analytics: 'Analytics',
+    revenueLast: 'Revenue · last {days} days',
+    avgRating: 'Avg rating',
+    bestSellers: 'Best sellers',
+    peakHours: 'Peak hours',
+    peakDays: 'Busy days',
+    busiest: 'Busiest',
+    noDataYet: 'Not enough data yet — come back after your first orders.',
+    appearance: 'Appearance',
+    themeLight: 'Light',
+    themeDark: 'Dark',
+    themeSystem: 'System',
   },
   tr: {
     welcome: 'EasYum\'a Hoş Geldiniz',
@@ -275,6 +290,7 @@ const strings = {
     status_cancelled: 'İptal edildi',
     tab_owner_orders: 'Siparişler',
     tab_owner_menu: 'Menü',
+    tab_analytics: 'Analitik',
     tab_owner_couriers: 'Kuryeler',
     subscriptionActive: 'Üyelik Aktif',
     activeOrders: 'Aktif Siparişler',
@@ -425,6 +441,20 @@ const strings = {
     restaurantLocation: 'Restoran konumu',
     restaurantLocationHelp: 'Restoranınızı haritaya sabitleyin. Müşteriler yalnızca teslimat yarıçapınıza girdiklerinde sizi görecek.',
     trackCourier: 'Kuryeyi takip et',
+    minRating: 'Minimum puan',
+    any: 'Herhangi',
+    analytics: 'Analitik',
+    revenueLast: 'Gelir · son {days} gün',
+    avgRating: 'Ort. puan',
+    bestSellers: 'En çok satanlar',
+    peakHours: 'Yoğun saatler',
+    peakDays: 'Yoğun günler',
+    busiest: 'En yoğun',
+    noDataYet: 'Henüz yeterli veri yok — ilk siparişlerinizden sonra tekrar bakın.',
+    appearance: 'Görünüm',
+    themeLight: 'Açık',
+    themeDark: 'Koyu',
+    themeSystem: 'Sistem',
   },
 };
 
@@ -453,7 +483,15 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.setItem(STORAGE_KEY, l);
   }, []);
 
-  const t = useCallback((k: Keys) => (strings[lang][k] ?? strings.en[k] ?? k) as string, [lang]);
+  const t = useCallback((k: Keys, params?: Record<string, string | number>) => {
+    let s = (strings[lang][k] ?? strings.en[k] ?? k) as string;
+    if (params) {
+      for (const [key, value] of Object.entries(params)) {
+        s = s.replace(new RegExp(`\\{${key}\\}`, 'g'), String(value));
+      }
+    }
+    return s;
+  }, [lang]);
 
   return <Ctx.Provider value={{ lang, setLang, t }}>{children}</Ctx.Provider>;
 }
