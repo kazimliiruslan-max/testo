@@ -9,6 +9,7 @@ import { useAuth } from '@/src/context/AuthContext';
 import { useI18n } from '@/src/context/I18nContext';
 import { theme } from '@/src/theme';
 import { HoursEditor, DEFAULT_HOURS, normalizeHours, isValidHHMM, WEEKDAYS as WK, HoursMap } from '@/src/components/HoursEditor';
+import LocationPicker, { PickedLocation } from '@/src/components/LocationPicker';
 
 // URL to the desktop web admin panel (same origin as the site).
 const WEB_PORTAL_URL = (process.env.EXPO_PUBLIC_BACKEND_URL || '').replace(/\/$/, '') || 'https://easyum.app';
@@ -34,6 +35,7 @@ export default function CustomerProfile() {
   const [radiusInput, setRadiusInput] = useState('');
   const [minOrderInput, setMinOrderInput] = useState('');
   const [hoursInput, setHoursInput] = useState<HoursMap>(DEFAULT_HOURS);
+  const [restLoc, setRestLoc] = useState<PickedLocation | null>(null);
   const [logoBase64, setLogoBase64] = useState<string | null>(null);
   const [pickingLogo, setPickingLogo] = useState(false);
   const [savingRest, setSavingRest] = useState(false);
@@ -62,6 +64,11 @@ export default function CustomerProfile() {
       setRadiusInput(String(r.data.delivery_radius_km ?? 5));
       setMinOrderInput(String(r.data.min_order_value ?? 0));
       setHoursInput(normalizeHours(r.data.hours));
+      if (typeof r.data.lat === 'number' && typeof r.data.lng === 'number') {
+        setRestLoc({ lat: r.data.lat, lng: r.data.lng, address: r.data.address || '' });
+      } else {
+        setRestLoc(null);
+      }
     } catch {}
   };
 
@@ -81,6 +88,11 @@ export default function CustomerProfile() {
     setSavingRest(true);
     try {
       const body: any = { delivery_radius_km: val, min_order_value: minVal, hours: hoursInput };
+      if (restLoc) {
+        body.lat = restLoc.lat;
+        body.lng = restLoc.lng;
+        body.address = restLoc.address;
+      }
       if (logoBase64) body.logo_base64 = logoBase64;
       await api.put('/restaurants/me', body);
       setShowRestSettings(false);
@@ -313,6 +325,18 @@ export default function CustomerProfile() {
                         : <><Ionicons name="cloud-upload-outline" size={18} color={theme.colors.brand} /><Text style={styles.pickLogoTxt}>{t('uploadLogo')}</Text></>}
                     </Pressable>
                   </View>
+
+                  {/* Restaurant location — critical for distance-based discovery */}
+                  <Text style={{ fontSize: theme.font.sm, color: theme.colors.onSurfaceTertiary, fontWeight: '700', marginTop: theme.spacing.md, marginBottom: theme.spacing.sm }}>
+                    {t('restaurantLocation').toUpperCase()}
+                  </Text>
+                  <View style={{ height: 260, borderRadius: theme.radius.md, overflow: 'hidden', marginBottom: theme.spacing.sm }}>
+                    <LocationPicker value={restLoc} onChange={setRestLoc} testID="restaurant-location-picker" />
+                  </View>
+                  <Text style={{ color: theme.colors.onSurfaceTertiary, fontSize: theme.font.sm, marginBottom: theme.spacing.md }}>
+                    {t('restaurantLocationHelp')}
+                  </Text>
+
                   <Text style={{ fontSize: theme.font.sm, color: theme.colors.onSurfaceTertiary, fontWeight: '700', marginTop: theme.spacing.md }}>
                     {t('deliveryRadiusKm').toUpperCase()}
                   </Text>

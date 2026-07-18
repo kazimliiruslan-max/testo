@@ -216,6 +216,9 @@ const strings = {
     acceptInviteSubtitle: 'Choose your password — you\'ll be automatically signed in to your courier dashboard.',
     bizOrLogin: 'or',
     bizSignInExisting: 'Sign in to my restaurant account',
+    restaurantLocation: 'Restaurant location',
+    restaurantLocationHelp: 'Pin your restaurant on the map. Customers will only see you if they\'re within your delivery radius.',
+    trackCourier: 'Track courier',
   },
   tr: {
     welcome: 'EasYum\'a Hoş Geldiniz',
@@ -419,6 +422,9 @@ const strings = {
     acceptInviteSubtitle: 'Şifrenizi seçin — kurye panelinize otomatik olarak giriş yapılacaksınız.',
     bizOrLogin: 'veya',
     bizSignInExisting: 'Restoran hesabımla giriş yap',
+    restaurantLocation: 'Restoran konumu',
+    restaurantLocationHelp: 'Restoranınızı haritaya sabitleyin. Müşteriler yalnızca teslimat yarıçapınıza girdiklerinde sizi görecek.',
+    trackCourier: 'Kuryeyi takip et',
   },
 };
 

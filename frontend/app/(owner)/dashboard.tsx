@@ -28,6 +28,8 @@ export default function OwnerOrders() {
   const [statsPeriod, setStatsPeriod] = useState<'week' | 'month'>('month');
   const [stats, setStats] = useState<any>(null);
   const [statsLoading, setStatsLoading] = useState(false);
+  // Live courier positions from WebSocket, keyed by order_id
+  const [courierLocs, setCourierLocs] = useState<Record<string, { lat: number; lng: number }>>({});
 
   const loadStats = useCallback(async (p: 'week' | 'month') => {
     setStatsLoading(true);
@@ -96,8 +98,13 @@ export default function OwnerOrders() {
 
   // Real-time updates
   useOrderEvents((msg) => {
-    if (msg?.type === 'order_new' || msg?.type === 'order_status') {
+    if (!msg) return;
+    if (msg.type === 'order_new' || msg.type === 'order_status') {
       load(true);
+    } else if (msg.type === 'courier_location' && msg.order_id) {
+      if (typeof msg.lat === 'number' && typeof msg.lng === 'number') {
+        setCourierLocs((prev) => ({ ...prev, [msg.order_id]: { lat: msg.lat, lng: msg.lng } }));
+      }
     }
   }, true);
 
@@ -239,7 +246,21 @@ export default function OwnerOrders() {
               </View>
             </Pressable>
             {item.customer_phone && <Text style={styles.phone}>📞 {item.customer_phone}</Text>}
-            {item.courier_name && <Text style={styles.courierTag}>🛵 {item.courier_name}</Text>}
+            {item.courier_name && (
+              <View style={styles.courierRow}>
+                <Text style={styles.courierTag}>🛵 {item.courier_name}</Text>
+                {courierLocs[item.id] && !['delivered', 'cancelled'].includes(item.status) ? (
+                  <Pressable
+                    testID={`owner-track-courier-${item.id}`}
+                    onPress={() => openLocation(courierLocs[item.id].lat, courierLocs[item.id].lng, `Courier — ${item.courier_name}`)}
+                    style={styles.livePill}
+                  >
+                    <View style={styles.liveDot} />
+                    <Text style={styles.liveTxt}>{t('trackCourier')}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            )}
             <View style={styles.actions}>
               {item.status === 'pending' && (
                 <Pressable testID={`accept-${item.id}`} onPress={() => setStatus(item.id, 'accepted')} style={styles.actionBtn}>
@@ -322,8 +343,8 @@ const styles = StyleSheet.create({
   subMeta: { color: theme.colors.onSurfaceSecondary, marginTop: 4, fontSize: theme.font.sm },
   topItem: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: theme.spacing.sm },
   topItemTxt: { color: theme.colors.onSurface, fontWeight: '600' },
-  card: { backgroundColor: theme.colors.surfaceSecondary, padding: theme.spacing.md, borderRadius: theme.radius.md, borderLeftWidth: 4, borderLeftColor: 'transparent' },
-  cardPending: { borderLeftColor: theme.colors.brand, backgroundColor: theme.colors.brandTertiary },
+  card: { backgroundColor: '#fff', padding: theme.spacing.md, borderRadius: theme.radius.lg, borderLeftWidth: 4, borderLeftColor: 'transparent', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  cardPending: { borderLeftColor: theme.colors.brand, backgroundColor: theme.colors.brandTertiary, shadowColor: theme.colors.brand, shadowOpacity: 0.15 },
   cardTop: { flexDirection: 'row', alignItems: 'center' },
   cardTitle: { fontSize: theme.font.lg, fontWeight: '700', color: theme.colors.onSurface },
   cardSub: { color: theme.colors.onSurfaceSecondary, marginTop: 2 },
@@ -334,6 +355,10 @@ const styles = StyleSheet.create({
   openMapTxt: { color: '#fff', fontWeight: '700', fontSize: 11 },
   phone: { color: theme.colors.onSurfaceSecondary, marginTop: 2, fontSize: theme.font.sm },
   courierTag: { color: theme.colors.onSurface, marginTop: 4, fontSize: theme.font.sm, fontWeight: '600' },
+  courierRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, flexWrap: 'wrap' },
+  livePill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.colors.brand, paddingHorizontal: theme.spacing.md, paddingVertical: 4, borderRadius: theme.radius.pill },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#fff' },
+  liveTxt: { color: '#fff', fontWeight: '800', fontSize: theme.font.xs, letterSpacing: 0.3 },
   actions: { flexDirection: 'row', gap: theme.spacing.sm, marginTop: theme.spacing.md },
   actionBtn: { backgroundColor: theme.colors.brand, paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.sm, borderRadius: theme.radius.pill },
   actionTxt: { color: '#fff', fontWeight: '700' },
@@ -344,5 +369,4 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: theme.font.xl, fontWeight: '800', color: theme.colors.onSurface, marginBottom: theme.spacing.md },
   modalRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, padding: theme.spacing.md, backgroundColor: theme.colors.surfaceSecondary, borderRadius: theme.radius.md, marginBottom: theme.spacing.sm },
   modalRowTxt: { flex: 1, fontSize: theme.font.lg, fontWeight: '600', color: theme.colors.onSurface },
-  liveDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: theme.colors.brand },
 });

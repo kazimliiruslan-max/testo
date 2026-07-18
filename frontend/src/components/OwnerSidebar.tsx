@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, usePathname } from 'expo-router';
 import { theme } from '@/src/theme';
 import { useAuth } from '@/src/context/AuthContext';
@@ -29,15 +30,20 @@ export function OwnerSidebar() {
 
   return (
     <View style={styles.sidebar} testID="owner-sidebar">
-      <View style={styles.brandRow}>
+      <LinearGradient
+        colors={[theme.colors.brand, theme.colors.brandDark]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.brandCard}
+      >
         <View style={styles.logoDot}>
-          <Ionicons name="restaurant" size={22} color="#fff" />
+          <Ionicons name="restaurant" size={22} color={theme.colors.brand} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.brand}>EasYum</Text>
-          <Text style={styles.brandSub}>{t('restaurantAdmin')}</Text>
+          <Text style={[styles.brand, { color: '#fff' }]}>EasYum</Text>
+          <Text style={[styles.brandSub, { color: 'rgba(255,255,255,0.85)' }]}>{t('restaurantAdmin')}</Text>
         </View>
-      </View>
+      </LinearGradient>
       {user?.name ? (
         <View style={styles.userChip}>
           <Ionicons name="person-circle" size={20} color={theme.colors.brandDark} />
@@ -84,7 +90,8 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.xl,
   },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingHorizontal: theme.spacing.sm, marginBottom: theme.spacing.md },
-  logoDot: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.brand, alignItems: 'center', justifyContent: 'center' },
+  brandCard: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.md, borderRadius: theme.radius.lg, marginBottom: theme.spacing.md, shadowColor: theme.colors.brand, shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+  logoDot: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   brand: { fontSize: theme.font.lg, fontWeight: '800', color: theme.colors.onSurface },
   brandSub: { fontSize: theme.font.xs, color: theme.colors.onSurfaceSecondary },
   userChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.colors.brandTertiary, padding: 8, borderRadius: theme.radius.md, marginBottom: theme.spacing.md },

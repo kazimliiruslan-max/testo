@@ -806,22 +806,34 @@ async def list_couriers(user: dict = Depends(require_roles('restaurant_owner')))
 @api_router.post("/couriers/me/location")
 async def update_courier_location(loc: CourierLocation, user: dict = Depends(require_roles('courier'))):
     await db.users.update_one({'id': user['id']}, {'$set': {'lat': loc.lat, 'lng': loc.lng}})
-    # Broadcast the courier's new position to every customer whose active order
-    # is currently assigned to this courier so their tracking screen can update
-    # the ETA in real time.
+    # Broadcast the courier's new position to (a) every customer whose active
+    # order is currently assigned to this courier and (b) the owner of each of
+    # those restaurants, so their live tracking + admin dashboards can update
+    # the courier marker in real time.
     active_orders = await db.orders.find({
         'courier_id': user['id'],
         'status': {'$in': ['accepted', 'preparing', 'out_for_delivery']},
-    }, {'_id': 0, 'id': 1, 'customer_id': 1}).to_list(50)
+    }, {'_id': 0, 'id': 1, 'customer_id': 1, 'restaurant_id': 1}).to_list(50)
     if active_orders:
+        # Cache restaurant → owner_id lookups
+        restaurant_ids = {o['restaurant_id'] for o in active_orders}
+        owners = await db.restaurants.find(
+            {'id': {'$in': list(restaurant_ids)}},
+            {'_id': 0, 'id': 1, 'owner_id': 1},
+        ).to_list(50)
+        owner_by_rest = {r['id']: r['owner_id'] for r in owners}
         for o in active_orders:
-            await ws_manager.send(o['customer_id'], {
+            payload = {
                 'type': 'courier_location',
                 'order_id': o['id'],
                 'courier_id': user['id'],
                 'lat': loc.lat,
                 'lng': loc.lng,
-            })
+            }
+            await ws_manager.send(o['customer_id'], payload)
+            owner_id = owner_by_rest.get(o['restaurant_id'])
+            if owner_id:
+                await ws_manager.send(owner_id, payload)
     return {'ok': True, 'lat': loc.lat, 'lng': loc.lng}
 
 @api_router.get("/couriers/{cid}/location")
